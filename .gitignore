@@ -1,0 +1,12 @@
+.DS_Store
+build/
+DerivedData/
+*.xcodeproj/
+.swiftpm/
+
+# Working docs (Dropbox only, not the repo)
+Project Build Guide.md
+PRD Template.md
+Chat Context.md
+_inbox/
+_review/
