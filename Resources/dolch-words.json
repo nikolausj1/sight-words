@@ -1,0 +1,1102 @@
+[
+  {
+    "text": "a",
+    "list": "dolchPrePrimer",
+    "sentence": "A dog sat on the rug."
+  },
+  {
+    "text": "and",
+    "list": "dolchPrePrimer",
+    "sentence": "We ran and jumped all day."
+  },
+  {
+    "text": "away",
+    "list": "dolchPrePrimer",
+    "sentence": "The cat ran away from us."
+  },
+  {
+    "text": "big",
+    "list": "dolchPrePrimer",
+    "sentence": "The elephant is very big."
+  },
+  {
+    "text": "blue",
+    "list": "dolchPrePrimer",
+    "sentence": "The sky is bright blue today."
+  },
+  {
+    "text": "can",
+    "list": "dolchPrePrimer",
+    "sentence": "You can ride your bike now."
+  },
+  {
+    "text": "come",
+    "list": "dolchPrePrimer",
+    "sentence": "Please come to my house today."
+  },
+  {
+    "text": "down",
+    "list": "dolchPrePrimer",
+    "sentence": "The ball rolled down the hill."
+  },
+  {
+    "text": "find",
+    "list": "dolchPrePrimer",
+    "sentence": "Can you find the lost puppy?"
+  },
+  {
+    "text": "for",
+    "list": "dolchPrePrimer",
+    "sentence": "This gift is for my mom."
+  },
+  {
+    "text": "funny",
+    "list": "dolchPrePrimer",
+    "sentence": "The clown told a funny joke."
+  },
+  {
+    "text": "go",
+    "list": "dolchPrePrimer",
+    "sentence": "Let's go outside and play now."
+  },
+  {
+    "text": "help",
+    "list": "dolchPrePrimer",
+    "sentence": "Will you help me feed the dog?"
+  },
+  {
+    "text": "here",
+    "list": "dolchPrePrimer",
+    "sentence": "Come here and see my toy."
+  },
+  {
+    "text": "I",
+    "list": "dolchPrePrimer",
+    "sentence": "I like to play with blocks."
+  },
+  {
+    "text": "in",
+    "list": "dolchPrePrimer",
+    "sentence": "The fish swims in the pond."
+  },
+  {
+    "text": "is",
+    "list": "dolchPrePrimer",
+    "sentence": "This puppy is very playful."
+  },
+  {
+    "text": "it",
+    "list": "dolchPrePrimer",
+    "sentence": "Pick it up and put it away."
+  },
+  {
+    "text": "jump",
+    "list": "dolchPrePrimer",
+    "sentence": "Frogs jump over the little rocks."
+  },
+  {
+    "text": "little",
+    "list": "dolchPrePrimer",
+    "sentence": "The little kitten took a nap."
+  },
+  {
+    "text": "look",
+    "list": "dolchPrePrimer",
+    "sentence": "Look at the birds in the tree."
+  },
+  {
+    "text": "make",
+    "list": "dolchPrePrimer",
+    "sentence": "We will make a sand castle."
+  },
+  {
+    "text": "me",
+    "list": "dolchPrePrimer",
+    "sentence": "Give me the red crayon please."
+  },
+  {
+    "text": "my",
+    "list": "dolchPrePrimer",
+    "sentence": "My dog likes to chase balls."
+  },
+  {
+    "text": "not",
+    "list": "dolchPrePrimer",
+    "sentence": "That is not my backpack."
+  },
+  {
+    "text": "one",
+    "list": "dolchPrePrimer",
+    "sentence": "I found one shiny rock."
+  },
+  {
+    "text": "play",
+    "list": "dolchPrePrimer",
+    "sentence": "Kids play tag at recess."
+  },
+  {
+    "text": "red",
+    "list": "dolchPrePrimer",
+    "sentence": "She picked a red apple."
+  },
+  {
+    "text": "run",
+    "list": "dolchPrePrimer",
+    "sentence": "The dogs run around the yard."
+  },
+  {
+    "text": "said",
+    "list": "dolchPrePrimer",
+    "sentence": "Mom said we could go swim."
+  },
+  {
+    "text": "see",
+    "list": "dolchPrePrimer",
+    "sentence": "Can you see the tall tree?"
+  },
+  {
+    "text": "the",
+    "list": "dolchPrePrimer",
+    "sentence": "The sun is shining today."
+  },
+  {
+    "text": "three",
+    "list": "dolchPrePrimer",
+    "sentence": "We saw three ducks at the pond."
+  },
+  {
+    "text": "to",
+    "list": "dolchPrePrimer",
+    "sentence": "We walked to the park today."
+  },
+  {
+    "text": "two",
+    "list": "dolchPrePrimer",
+    "sentence": "The cat has two kittens."
+  },
+  {
+    "text": "up",
+    "list": "dolchPrePrimer",
+    "sentence": "Climb up the ladder slowly."
+  },
+  {
+    "text": "we",
+    "list": "dolchPrePrimer",
+    "sentence": "We played games at school."
+  },
+  {
+    "text": "where",
+    "list": "dolchPrePrimer",
+    "sentence": "Where did you put your shoes?"
+  },
+  {
+    "text": "yellow",
+    "list": "dolchPrePrimer",
+    "sentence": "The sun looks bright yellow."
+  },
+  {
+    "text": "you",
+    "list": "dolchPrePrimer",
+    "sentence": "Can you catch the ball?"
+  },
+  {
+    "text": "all",
+    "list": "dolchPrimer",
+    "sentence": "We ate all the cookies."
+  },
+  {
+    "text": "am",
+    "list": "dolchPrimer",
+    "sentence": "I am happy to see you."
+  },
+  {
+    "text": "are",
+    "list": "dolchPrimer",
+    "sentence": "You are my best friend."
+  },
+  {
+    "text": "at",
+    "list": "dolchPrimer",
+    "sentence": "The dog sleeps at night."
+  },
+  {
+    "text": "ate",
+    "list": "dolchPrimer",
+    "sentence": "She ate a big sandwich."
+  },
+  {
+    "text": "be",
+    "list": "dolchPrimer",
+    "sentence": "Try to be kind to others."
+  },
+  {
+    "text": "black",
+    "list": "dolchPrimer",
+    "sentence": "The cat has soft black fur."
+  },
+  {
+    "text": "brown",
+    "list": "dolchPrimer",
+    "sentence": "The bear has thick brown fur."
+  },
+  {
+    "text": "but",
+    "list": "dolchPrimer",
+    "sentence": "I like cats but not snakes."
+  },
+  {
+    "text": "came",
+    "list": "dolchPrimer",
+    "sentence": "Grandma came to visit us."
+  },
+  {
+    "text": "did",
+    "list": "dolchPrimer",
+    "sentence": "Who did the dishes today?"
+  },
+  {
+    "text": "do",
+    "list": "dolchPrimer",
+    "sentence": "What do you want for lunch?"
+  },
+  {
+    "text": "eat",
+    "list": "dolchPrimer",
+    "sentence": "Birds eat seeds and bugs."
+  },
+  {
+    "text": "four",
+    "list": "dolchPrimer",
+    "sentence": "The table has four legs."
+  },
+  {
+    "text": "get",
+    "list": "dolchPrimer",
+    "sentence": "Let's get ready for school."
+  },
+  {
+    "text": "good",
+    "list": "dolchPrimer",
+    "sentence": "You did a good job today."
+  },
+  {
+    "text": "have",
+    "list": "dolchPrimer",
+    "sentence": "We have a new puppy."
+  },
+  {
+    "text": "he",
+    "list": "dolchPrimer",
+    "sentence": "He rides his bike to school."
+  },
+  {
+    "text": "into",
+    "list": "dolchPrimer",
+    "sentence": "The frog jumped into the pond."
+  },
+  {
+    "text": "like",
+    "list": "dolchPrimer",
+    "sentence": "I like to draw pictures."
+  },
+  {
+    "text": "must",
+    "list": "dolchPrimer",
+    "sentence": "You must wash your hands."
+  },
+  {
+    "text": "new",
+    "list": "dolchPrimer",
+    "sentence": "She got a new backpack."
+  },
+  {
+    "text": "no",
+    "list": "dolchPrimer",
+    "sentence": "There is no rain today."
+  },
+  {
+    "text": "now",
+    "list": "dolchPrimer",
+    "sentence": "Let's clean up now please."
+  },
+  {
+    "text": "on",
+    "list": "dolchPrimer",
+    "sentence": "The cat sat on the mat."
+  },
+  {
+    "text": "our",
+    "list": "dolchPrimer",
+    "sentence": "Our classroom has a fish tank."
+  },
+  {
+    "text": "out",
+    "list": "dolchPrimer",
+    "sentence": "The dog ran out the door."
+  },
+  {
+    "text": "please",
+    "list": "dolchPrimer",
+    "sentence": "Please share your toys today."
+  },
+  {
+    "text": "pretty",
+    "list": "dolchPrimer",
+    "sentence": "That flower is very pretty."
+  },
+  {
+    "text": "ran",
+    "list": "dolchPrimer",
+    "sentence": "The puppy ran across the yard."
+  },
+  {
+    "text": "ride",
+    "list": "dolchPrimer",
+    "sentence": "Can we ride the bus today?"
+  },
+  {
+    "text": "saw",
+    "list": "dolchPrimer",
+    "sentence": "We saw a rabbit in the yard."
+  },
+  {
+    "text": "say",
+    "list": "dolchPrimer",
+    "sentence": "Say hello to your teacher."
+  },
+  {
+    "text": "she",
+    "list": "dolchPrimer",
+    "sentence": "She likes to feed the ducks."
+  },
+  {
+    "text": "so",
+    "list": "dolchPrimer",
+    "sentence": "The soup was so warm."
+  },
+  {
+    "text": "soon",
+    "list": "dolchPrimer",
+    "sentence": "We will eat lunch soon."
+  },
+  {
+    "text": "that",
+    "list": "dolchPrimer",
+    "sentence": "That kitten is so fluffy."
+  },
+  {
+    "text": "there",
+    "list": "dolchPrimer",
+    "sentence": "The ball rolled over there."
+  },
+  {
+    "text": "they",
+    "list": "dolchPrimer",
+    "sentence": "They played tag at recess."
+  },
+  {
+    "text": "this",
+    "list": "dolchPrimer",
+    "sentence": "This puppy loves to nap."
+  },
+  {
+    "text": "too",
+    "list": "dolchPrimer",
+    "sentence": "My sister wants to come too."
+  },
+  {
+    "text": "under",
+    "list": "dolchPrimer",
+    "sentence": "The ball rolled under the bed."
+  },
+  {
+    "text": "want",
+    "list": "dolchPrimer",
+    "sentence": "Do you want some juice?"
+  },
+  {
+    "text": "was",
+    "list": "dolchPrimer",
+    "sentence": "The movie was really fun."
+  },
+  {
+    "text": "well",
+    "list": "dolchPrimer",
+    "sentence": "She sings very well."
+  },
+  {
+    "text": "went",
+    "list": "dolchPrimer",
+    "sentence": "We went to the park today."
+  },
+  {
+    "text": "what",
+    "list": "dolchPrimer",
+    "sentence": "What did you learn at school?"
+  },
+  {
+    "text": "white",
+    "list": "dolchPrimer",
+    "sentence": "The bunny has soft white fur."
+  },
+  {
+    "text": "who",
+    "list": "dolchPrimer",
+    "sentence": "Who wants to play a game?"
+  },
+  {
+    "text": "will",
+    "list": "dolchPrimer",
+    "sentence": "We will visit the farm tomorrow."
+  },
+  {
+    "text": "with",
+    "list": "dolchPrimer",
+    "sentence": "Play with your friends at recess."
+  },
+  {
+    "text": "yes",
+    "list": "dolchPrimer",
+    "sentence": "Yes, you can pet the dog."
+  },
+  {
+    "text": "after",
+    "list": "dolchFirst",
+    "sentence": "We eat a snack after school."
+  },
+  {
+    "text": "again",
+    "list": "dolchFirst",
+    "sentence": "Let's play that game again."
+  },
+  {
+    "text": "an",
+    "list": "dolchFirst",
+    "sentence": "She ate an apple for lunch."
+  },
+  {
+    "text": "any",
+    "list": "dolchFirst",
+    "sentence": "Do you have any pencils left?"
+  },
+  {
+    "text": "as",
+    "list": "dolchFirst",
+    "sentence": "The snow is as cold as ice."
+  },
+  {
+    "text": "ask",
+    "list": "dolchFirst",
+    "sentence": "You can ask your teacher for help."
+  },
+  {
+    "text": "by",
+    "list": "dolchFirst",
+    "sentence": "The cat sat by the window."
+  },
+  {
+    "text": "could",
+    "list": "dolchFirst",
+    "sentence": "We could go to the zoo."
+  },
+  {
+    "text": "every",
+    "list": "dolchFirst",
+    "sentence": "She feeds her dog every morning."
+  },
+  {
+    "text": "fly",
+    "list": "dolchFirst",
+    "sentence": "Birds fly high in the sky."
+  },
+  {
+    "text": "from",
+    "list": "dolchFirst",
+    "sentence": "This letter is from my friend."
+  },
+  {
+    "text": "give",
+    "list": "dolchFirst",
+    "sentence": "Please give the dog a treat."
+  },
+  {
+    "text": "going",
+    "list": "dolchFirst",
+    "sentence": "We are going to the park."
+  },
+  {
+    "text": "had",
+    "list": "dolchFirst",
+    "sentence": "The dog had a long nap."
+  },
+  {
+    "text": "has",
+    "list": "dolchFirst",
+    "sentence": "My cat has soft gray fur."
+  },
+  {
+    "text": "her",
+    "list": "dolchFirst",
+    "sentence": "I gave her a birthday card."
+  },
+  {
+    "text": "him",
+    "list": "dolchFirst",
+    "sentence": "We invited him to our party."
+  },
+  {
+    "text": "his",
+    "list": "dolchFirst",
+    "sentence": "He lost his favorite toy."
+  },
+  {
+    "text": "how",
+    "list": "dolchFirst",
+    "sentence": "How do you spell your name?"
+  },
+  {
+    "text": "just",
+    "list": "dolchFirst",
+    "sentence": "I just finished my homework."
+  },
+  {
+    "text": "know",
+    "list": "dolchFirst",
+    "sentence": "Do you know how to swim?"
+  },
+  {
+    "text": "let",
+    "list": "dolchFirst",
+    "sentence": "Let the puppy outside to play."
+  },
+  {
+    "text": "live",
+    "list": "dolchFirst",
+    "sentence": "Fish live under the water."
+  },
+  {
+    "text": "may",
+    "list": "dolchFirst",
+    "sentence": "You may go outside now."
+  },
+  {
+    "text": "of",
+    "list": "dolchFirst",
+    "sentence": "She ate a piece of cake."
+  },
+  {
+    "text": "old",
+    "list": "dolchFirst",
+    "sentence": "My grandpa is very old."
+  },
+  {
+    "text": "once",
+    "list": "dolchFirst",
+    "sentence": "We visit the farm once a year."
+  },
+  {
+    "text": "open",
+    "list": "dolchFirst",
+    "sentence": "Please open the window for air."
+  },
+  {
+    "text": "over",
+    "list": "dolchFirst",
+    "sentence": "The ball flew over the fence."
+  },
+  {
+    "text": "put",
+    "list": "dolchFirst",
+    "sentence": "Put your shoes by the door."
+  },
+  {
+    "text": "round",
+    "list": "dolchFirst",
+    "sentence": "The ball is small and round."
+  },
+  {
+    "text": "some",
+    "list": "dolchFirst",
+    "sentence": "Can I have some water please?"
+  },
+  {
+    "text": "stop",
+    "list": "dolchFirst",
+    "sentence": "Cars stop at the red light."
+  },
+  {
+    "text": "take",
+    "list": "dolchFirst",
+    "sentence": "Please take your seat quietly."
+  },
+  {
+    "text": "thank",
+    "list": "dolchFirst",
+    "sentence": "I thank you for the gift."
+  },
+  {
+    "text": "them",
+    "list": "dolchFirst",
+    "sentence": "Feed them before the sun sets."
+  },
+  {
+    "text": "then",
+    "list": "dolchFirst",
+    "sentence": "We ate lunch, then we napped."
+  },
+  {
+    "text": "think",
+    "list": "dolchFirst",
+    "sentence": "I think it will rain today."
+  },
+  {
+    "text": "walk",
+    "list": "dolchFirst",
+    "sentence": "We walk to school every day."
+  },
+  {
+    "text": "were",
+    "list": "dolchFirst",
+    "sentence": "The kids were happy at recess."
+  },
+  {
+    "text": "when",
+    "list": "dolchFirst",
+    "sentence": "When do we go to recess?"
+  },
+  {
+    "text": "always",
+    "list": "dolchSecond",
+    "sentence": "My dog always wags his tail."
+  },
+  {
+    "text": "around",
+    "list": "dolchSecond",
+    "sentence": "We ran around the playground fast."
+  },
+  {
+    "text": "because",
+    "list": "dolchSecond",
+    "sentence": "I wore a coat because it was cold."
+  },
+  {
+    "text": "been",
+    "list": "dolchSecond",
+    "sentence": "Have you been to the farm?"
+  },
+  {
+    "text": "before",
+    "list": "dolchSecond",
+    "sentence": "Wash your hands before you eat."
+  },
+  {
+    "text": "best",
+    "list": "dolchSecond",
+    "sentence": "You are my best friend."
+  },
+  {
+    "text": "both",
+    "list": "dolchSecond",
+    "sentence": "Both puppies like to nap."
+  },
+  {
+    "text": "buy",
+    "list": "dolchSecond",
+    "sentence": "We will buy apples at the store."
+  },
+  {
+    "text": "call",
+    "list": "dolchSecond",
+    "sentence": "Please call your dog inside now."
+  },
+  {
+    "text": "cold",
+    "list": "dolchSecond",
+    "sentence": "The ice cream is very cold."
+  },
+  {
+    "text": "does",
+    "list": "dolchSecond",
+    "sentence": "Does your cat like to play?"
+  },
+  {
+    "text": "don't",
+    "list": "dolchSecond",
+    "sentence": "Please don't feed the ducks bread."
+  },
+  {
+    "text": "fast",
+    "list": "dolchSecond",
+    "sentence": "The rabbit can run very fast."
+  },
+  {
+    "text": "first",
+    "list": "dolchSecond",
+    "sentence": "She was first in the line."
+  },
+  {
+    "text": "five",
+    "list": "dolchSecond",
+    "sentence": "The puppy has five soft toys."
+  },
+  {
+    "text": "found",
+    "list": "dolchSecond",
+    "sentence": "We found a shiny rock outside."
+  },
+  {
+    "text": "gave",
+    "list": "dolchSecond",
+    "sentence": "Dad gave me a new book."
+  },
+  {
+    "text": "goes",
+    "list": "dolchSecond",
+    "sentence": "The bus goes to school daily."
+  },
+  {
+    "text": "green",
+    "list": "dolchSecond",
+    "sentence": "The grass looks green in spring."
+  },
+  {
+    "text": "its",
+    "list": "dolchSecond",
+    "sentence": "The dog wagged its little tail."
+  },
+  {
+    "text": "made",
+    "list": "dolchSecond",
+    "sentence": "We made cookies for the party."
+  },
+  {
+    "text": "many",
+    "list": "dolchSecond",
+    "sentence": "She has many colorful crayons."
+  },
+  {
+    "text": "off",
+    "list": "dolchSecond",
+    "sentence": "Take your shoes off please."
+  },
+  {
+    "text": "or",
+    "list": "dolchSecond",
+    "sentence": "Do you want milk or juice?"
+  },
+  {
+    "text": "pull",
+    "list": "dolchSecond",
+    "sentence": "Please pull the wagon slowly."
+  },
+  {
+    "text": "read",
+    "list": "dolchSecond",
+    "sentence": "We read a story before bed."
+  },
+  {
+    "text": "right",
+    "list": "dolchSecond",
+    "sentence": "Turn right at the big tree."
+  },
+  {
+    "text": "sing",
+    "list": "dolchSecond",
+    "sentence": "The birds sing every morning."
+  },
+  {
+    "text": "sit",
+    "list": "dolchSecond",
+    "sentence": "Please sit down for story time."
+  },
+  {
+    "text": "sleep",
+    "list": "dolchSecond",
+    "sentence": "Puppies sleep a lot each day."
+  },
+  {
+    "text": "tell",
+    "list": "dolchSecond",
+    "sentence": "Can you tell me a joke?"
+  },
+  {
+    "text": "their",
+    "list": "dolchSecond",
+    "sentence": "The kids packed their lunch bags."
+  },
+  {
+    "text": "these",
+    "list": "dolchSecond",
+    "sentence": "These apples taste very sweet."
+  },
+  {
+    "text": "those",
+    "list": "dolchSecond",
+    "sentence": "Those birds sing in the morning."
+  },
+  {
+    "text": "upon",
+    "list": "dolchSecond",
+    "sentence": "Once upon a time, a fox lived here."
+  },
+  {
+    "text": "us",
+    "list": "dolchSecond",
+    "sentence": "Grandma read us a story."
+  },
+  {
+    "text": "use",
+    "list": "dolchSecond",
+    "sentence": "We use crayons to draw pictures."
+  },
+  {
+    "text": "very",
+    "list": "dolchSecond",
+    "sentence": "The kitten is very small."
+  },
+  {
+    "text": "wash",
+    "list": "dolchSecond",
+    "sentence": "Please wash your hands before lunch."
+  },
+  {
+    "text": "which",
+    "list": "dolchSecond",
+    "sentence": "Which toy do you want?"
+  },
+  {
+    "text": "why",
+    "list": "dolchSecond",
+    "sentence": "Why do birds fly south?"
+  },
+  {
+    "text": "wish",
+    "list": "dolchSecond",
+    "sentence": "I wish for a sunny day."
+  },
+  {
+    "text": "work",
+    "list": "dolchSecond",
+    "sentence": "Ants work hard all summer."
+  },
+  {
+    "text": "would",
+    "list": "dolchSecond",
+    "sentence": "Would you like some juice?"
+  },
+  {
+    "text": "write",
+    "list": "dolchSecond",
+    "sentence": "Please write your name here."
+  },
+  {
+    "text": "your",
+    "list": "dolchSecond",
+    "sentence": "Is this your backpack?"
+  },
+  {
+    "text": "about",
+    "list": "dolchThird",
+    "sentence": "Tell me about your favorite animal."
+  },
+  {
+    "text": "better",
+    "list": "dolchThird",
+    "sentence": "I feel better after a nap."
+  },
+  {
+    "text": "bring",
+    "list": "dolchThird",
+    "sentence": "Please bring your book to school."
+  },
+  {
+    "text": "carry",
+    "list": "dolchThird",
+    "sentence": "Can you carry this heavy bag?"
+  },
+  {
+    "text": "clean",
+    "list": "dolchThird",
+    "sentence": "Let's clean up the toy room."
+  },
+  {
+    "text": "cut",
+    "list": "dolchThird",
+    "sentence": "She will cut the paper carefully."
+  },
+  {
+    "text": "done",
+    "list": "dolchThird",
+    "sentence": "Are you done with your snack?"
+  },
+  {
+    "text": "draw",
+    "list": "dolchThird",
+    "sentence": "I like to draw funny animals."
+  },
+  {
+    "text": "drink",
+    "list": "dolchThird",
+    "sentence": "Puppies drink water when they play."
+  },
+  {
+    "text": "eight",
+    "list": "dolchThird",
+    "sentence": "My brother is eight years old."
+  },
+  {
+    "text": "fall",
+    "list": "dolchThird",
+    "sentence": "Leaves fall from the trees outside."
+  },
+  {
+    "text": "far",
+    "list": "dolchThird",
+    "sentence": "The park is not too far."
+  },
+  {
+    "text": "full",
+    "list": "dolchThird",
+    "sentence": "My tummy feels very full now."
+  },
+  {
+    "text": "got",
+    "list": "dolchThird",
+    "sentence": "She got a new puppy today."
+  },
+  {
+    "text": "grow",
+    "list": "dolchThird",
+    "sentence": "Plants grow tall in the sun."
+  },
+  {
+    "text": "hold",
+    "list": "dolchThird",
+    "sentence": "Please hold my hand at recess."
+  },
+  {
+    "text": "hot",
+    "list": "dolchThird",
+    "sentence": "The soup is too hot to eat."
+  },
+  {
+    "text": "hurt",
+    "list": "dolchThird",
+    "sentence": "Did you hurt your knee outside?"
+  },
+  {
+    "text": "if",
+    "list": "dolchThird",
+    "sentence": "We can play if it stops raining."
+  },
+  {
+    "text": "keep",
+    "list": "dolchThird",
+    "sentence": "You can keep the extra crayon."
+  },
+  {
+    "text": "kind",
+    "list": "dolchThird",
+    "sentence": "Always be kind to your friends."
+  },
+  {
+    "text": "laugh",
+    "list": "dolchThird",
+    "sentence": "The joke made everyone laugh loudly."
+  },
+  {
+    "text": "light",
+    "list": "dolchThird",
+    "sentence": "Turn on the light in your room."
+  },
+  {
+    "text": "long",
+    "list": "dolchThird",
+    "sentence": "The snake has a long tail."
+  },
+  {
+    "text": "much",
+    "list": "dolchThird",
+    "sentence": "How much juice do you want?"
+  },
+  {
+    "text": "myself",
+    "list": "dolchThird",
+    "sentence": "I made this drawing myself."
+  },
+  {
+    "text": "never",
+    "list": "dolchThird",
+    "sentence": "I never forget to feed my fish."
+  },
+  {
+    "text": "only",
+    "list": "dolchThird",
+    "sentence": "She has only one red crayon."
+  },
+  {
+    "text": "own",
+    "list": "dolchThird",
+    "sentence": "He drew his own funny picture."
+  },
+  {
+    "text": "pick",
+    "list": "dolchThird",
+    "sentence": "Let's pick apples at the farm."
+  },
+  {
+    "text": "seven",
+    "list": "dolchThird",
+    "sentence": "The team has seven happy players."
+  },
+  {
+    "text": "shall",
+    "list": "dolchThird",
+    "sentence": "Shall we play a fun game?"
+  },
+  {
+    "text": "show",
+    "list": "dolchThird",
+    "sentence": "Can you show me your drawing?"
+  },
+  {
+    "text": "six",
+    "list": "dolchThird",
+    "sentence": "The farm has six baby goats."
+  },
+  {
+    "text": "small",
+    "list": "dolchThird",
+    "sentence": "The mouse is very small."
+  },
+  {
+    "text": "start",
+    "list": "dolchThird",
+    "sentence": "We start school in the morning."
+  },
+  {
+    "text": "ten",
+    "list": "dolchThird",
+    "sentence": "She counted ten shiny stars."
+  },
+  {
+    "text": "today",
+    "list": "dolchThird",
+    "sentence": "We are going to the zoo today."
+  },
+  {
+    "text": "together",
+    "list": "dolchThird",
+    "sentence": "We built a fort together."
+  },
+  {
+    "text": "try",
+    "list": "dolchThird",
+    "sentence": "You should try the new game."
+  },
+  {
+    "text": "warm",
+    "list": "dolchThird",
+    "sentence": "The blanket feels soft and warm."
+  }
+]
