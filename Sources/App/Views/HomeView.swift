@@ -11,6 +11,8 @@ struct HomeView: View {
     @State private var showSession = false
     @State private var showSolo = false
     @State private var showTricky = false
+    @State private var showKidProfile = false
+    @State private var showParent = false
 
     private var profile: Profile? { profiles.first(where: { $0.isActive }) ?? profiles.first }
     private var service: LearningService { LearningService(context: context) }
@@ -64,6 +66,15 @@ struct HomeView: View {
                     .multilineTextAlignment(.center)
                     .padding(.top, Theme.Metric.gap / 2)
             }
+
+            // In-hierarchy overlay (§6.11): NOT a fullScreenCover, so the
+            // keyboard behaves normally while editing the name inline.
+            if showKidProfile {
+                KidProfileView(onClose: {
+                    withAnimation(.easeOut(duration: 0.2)) { showKidProfile = false }
+                })
+                .zIndex(5)
+            }
         }
         .padding(Theme.Metric.pad)
         .fullScreenCover(isPresented: $showSession) {
@@ -81,6 +92,9 @@ struct HomeView: View {
                 SessionView(profile: profile, context: context, kind: .tricky)
             }
         }
+        .fullScreenCover(isPresented: $showParent) {
+            ParentAreaView()
+        }
         .onAppear { applyDemoArgsIfNeeded() }
     }
 
@@ -94,7 +108,7 @@ struct HomeView: View {
 
     private func applyDemoArgsIfNeeded() {
         #if DEBUG
-        guard !showSession, !showSolo, !showTricky else { return }
+        guard !showSession, !showSolo, !showTricky, !showKidProfile, !showParent else { return }
         let args = ProcessInfo.processInfo.arguments
         if args.contains("-demoPractice") || args.contains("-demoReteach")
             || args.contains("-demoComplete") || args.contains("-demoSentence") {
@@ -104,6 +118,10 @@ struct HomeView: View {
         } else if args.contains("-demoTricky") {
             if let profile { service.seedTrickyWordsIfNeeded(for: profile) }
             showTricky = true
+        } else if args.contains("-demoKidProfile") {
+            showKidProfile = true
+        } else if args.contains("-demoParent") || args.contains("-demoDashboard") {
+            showParent = true
         }
         #endif
     }
@@ -118,7 +136,7 @@ struct HomeView: View {
 
     private var profileChip: some View {
         Button {
-            // Placeholder: opens the kid profile overlay in a later phase.
+            withAnimation(.easeOut(duration: 0.2)) { showKidProfile = true }
         } label: {
             HStack(spacing: 10) {
                 AvatarBadge(key: profile?.avatarSymbol ?? "avatar1", size: 40)
@@ -137,7 +155,7 @@ struct HomeView: View {
 
     private var gearButton: some View {
         Button {
-            // Placeholder: opens the parent area in a later phase.
+            showParent = true
         } label: {
             Image(systemName: "gearshape.fill")
                 .font(.system(size: 22, weight: .semibold))

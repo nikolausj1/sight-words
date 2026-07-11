@@ -15,7 +15,12 @@ struct SightWordsApp: App {
         let service = LearningService(context: container.mainContext)
         #if DEBUG
         let args = ProcessInfo.processInfo.arguments
-        if args.contains("-freshData") { service.wipeStore() }
+        // "-demoOnboarding"/"-demoOnboardingLevel" need a fresh, un-onboarded
+        // profile so the first-run flow is guaranteed to show (§B demo hooks).
+        if args.contains("-freshData") || args.contains("-demoOnboarding")
+            || args.contains("-demoOnboardingLevel") {
+            service.wipeStore()
+        }
         #endif
         service.bootstrap()
     }

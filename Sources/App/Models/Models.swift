@@ -90,6 +90,11 @@ final class WordProgressRecord {
     var fluentDayCount: Int
     var lastFluentDay: Date?
 
+    /// Additive field (lightweight SwiftData migration): stamped the first time
+    /// this profile is ever exposed to the word (dashboard word-detail popover).
+    /// Existing rows predating this field simply read `nil`.
+    var firstSeenAt: Date?
+
     init(wordText: String) {
         self.wordText = wordText
         self.stateRaw = WordState.new.rawValue
@@ -100,6 +105,7 @@ final class WordProgressRecord {
         self.recentResults = []
         self.avgResponseMs = 0
         self.fluentDayCount = 0
+        self.firstSeenAt = nil
     }
 
     /// Bridges to the pure engine's value type. Note: `WordSnapshot.init`
