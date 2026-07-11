@@ -1,7 +1,8 @@
 import Foundation
 
-/// Which kind of session this coordinator is running. Only `parentScored` is
-/// wired up today; `solo`/`tricky` are next-worker territory (PRD §6.7/§6.9).
+/// Which kind of session this coordinator is running: which deck the Engine
+/// builds (parent/solo both use `SessionMode.standard`; tricky uses
+/// `SessionMode.tricky`, PRD §6.9) and which control style the view defaults to.
 enum SessionKind: Equatable {
     case parentScored
     case solo
@@ -14,6 +15,15 @@ enum SessionKind: Equatable {
         case .tricky: return "tricky"
         }
     }
+}
+
+/// Which bottom-control layout a session shows: parent-scored's three buttons
+/// (Got it/Almost/Not yet) or solo's Show-answer -> self-score flow (§6.7).
+/// Tricky Words has no style of its own — it mirrors whichever was last used
+/// (§6.3), stored on `Profile.lastUsedControlStyle`.
+enum ControlStyle: String {
+    case parentScored = "parent"
+    case solo = "solo"
 }
 
 /// The one-session state machine (PRD §6.4-6.6, §6.10). `WordSnapshot` isn't
@@ -44,6 +54,10 @@ final class SessionCoordinator: ObservableObject {
     @Published private(set) var missedWords: [String] = []
     @Published private(set) var buttonsEnabled: Bool = true
     @Published private(set) var reteachStep: Int = 0      // 0: word, 1: say-it pause, 2: spaced, 3: sentence
+    @Published private(set) var revealed: Bool = false    // On My Own (§6.7): Show-answer has been tapped
+
+    /// Fixed for the whole session — see `ControlStyle`.
+    let controlStyle: ControlStyle
 
     private let service: LearningService
     private let speech: SpeechService
@@ -55,6 +69,7 @@ final class SessionCoordinator: ObservableObject {
     private var queue: SessionQueue!
     private var currentWordID: String = ""
     private var cardAppearedAt: Date = .now
+    private var revealedResponseMs: Int?
     private var introducedWords: Set<String> = []
     private var missedSet: Set<String> = []
 
@@ -71,12 +86,20 @@ final class SessionCoordinator: ObservableObject {
         self.kind = kind
         self.sessionDate = now
         self.sessionStart = now
+        switch kind {
+        case .parentScored: self.controlStyle = .parentScored
+        case .solo: self.controlStyle = .solo
+        case .tricky: self.controlStyle = ControlStyle(rawValue: profile.lastUsedControlStyle) ?? .parentScored
+        }
     }
 
     // MARK: Session lifecycle
 
     func start() {
         guard case .loading = phase else { return }
+        if kind != .tricky {
+            service.recordControlStyleUsed(profile: profile, style: controlStyle.rawValue)
+        }
         let snapshots = service.pool(for: profile)
         let mode: SessionMode = (kind == .tricky) ? .tricky : .standard
         let words = buildSession(pool: snapshots, size: max(1, profile.sessionSize),
@@ -84,6 +107,16 @@ final class SessionCoordinator: ObservableObject {
         queue = SessionQueue(words: words)
         totalWords = queue.totalWords
         advanceToCurrentCard()
+    }
+
+    /// On My Own (§6.7): reveals the word aloud and swaps the Show-answer
+    /// button for the two self-score buttons. Response time is captured now
+    /// (word-appear -> this tap), not at the later self-score tap.
+    func revealAnswer() {
+        guard case .card = phase, controlStyle == .solo, buttonsEnabled, !revealed else { return }
+        revealed = true
+        revealedResponseMs = max(0, Int(Date().timeIntervalSince(cardAppearedAt) * 1000))
+        speech.speakWord(currentWord)
     }
 
     /// Replays the current word's audio (speaker side control).
@@ -99,8 +132,11 @@ final class SessionCoordinator: ObservableObject {
 
     func score(_ result: ScoreResult) {
         guard case .card = phase, buttonsEnabled, let card = queue.currentCard() else { return }
+        if controlStyle == .solo, !revealed { return }
         buttonsEnabled = false
-        let responseMs = max(0, Int(Date().timeIntervalSince(cardAppearedAt) * 1000))
+        // Solo mode passes the Show-answer tap time (word-appear -> reveal),
+        // per §6.7 — not the later self-score tap.
+        let responseMs = revealedResponseMs ?? max(0, Int(Date().timeIntervalSince(cardAppearedAt) * 1000))
         let word = currentWord
         let wordID = card.id
         phase = .feedback(result)
@@ -216,6 +252,8 @@ final class SessionCoordinator: ObservableObject {
         phase = .card
         cardAppearedAt = .now
         buttonsEnabled = true
+        revealed = false
+        revealedResponseMs = nil
         demoStep()
     }
 
@@ -233,7 +271,7 @@ final class SessionCoordinator: ObservableObject {
     // MARK: Debug / screenshot hooks
 
     #if DEBUG
-    enum DemoMode { case reteach, complete, sentence }
+    enum DemoMode { case reteach, complete, sentence, soloAnswer }
     private var demoMode: DemoMode?
     private var demoTargetWordID: String?
     private var demoStop = false
@@ -250,6 +288,12 @@ final class SessionCoordinator: ObservableObject {
         case .sentence:
             if currentSentence != nil, !sentenceRevealed { sentenceRevealed = true }
             demoStop = true   // one-shot: leave the card up for the screenshot
+        case .soloAnswer:
+            demoStop = true   // one-shot: leave the self-score buttons up for the screenshot
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+                guard let self, case .card = self.phase, !self.revealed else { return }
+                self.revealAnswer()
+            }
         case .reteach:
             if demoTargetWordID == nil { demoTargetWordID = currentWordID }
             let targetWordID = currentWordID

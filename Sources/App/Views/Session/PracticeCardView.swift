@@ -87,20 +87,53 @@ struct PracticeCardView: View {
         }
     }
 
+    /// Parent-scored gets three buttons (§6.4); solo gets Show-answer, which
+    /// swaps into the two self-score buttons once tapped (§6.7). Tricky Words
+    /// has no style of its own and renders whichever `controlStyle` it inherited.
+    @ViewBuilder
     private var scoringButtons: some View {
-        HStack(spacing: Theme.Metric.gap) {
-            scoreButton(title: "Got it", systemImage: "checkmark", base: Theme.Color.correct) {
-                coordinator.score(.gotIt)
+        switch coordinator.controlStyle {
+        case .parentScored:
+            HStack(spacing: Theme.Metric.gap) {
+                scoreButton(title: "Got it", systemImage: "checkmark", base: Theme.Color.correct) {
+                    coordinator.score(.gotIt)
+                }
+                scoreButton(title: "Almost", systemImage: "circle", base: Theme.Color.accent) {
+                    coordinator.score(.almost)
+                }
+                scoreButton(title: "Not yet", systemImage: "arrow.counterclockwise", base: Theme.Color.gentle) {
+                    coordinator.score(.notYet)
+                }
             }
-            scoreButton(title: "Almost", systemImage: "circle", base: Theme.Color.accent) {
-                coordinator.score(.almost)
-            }
-            scoreButton(title: "Not yet", systemImage: "arrow.counterclockwise", base: Theme.Color.gentle) {
-                coordinator.score(.notYet)
+            .disabled(!coordinator.buttonsEnabled)
+            .opacity(coordinator.buttonsEnabled ? 1 : 0.5)
+
+        case .solo:
+            if coordinator.revealed {
+                HStack(spacing: Theme.Metric.gap) {
+                    scoreButton(title: "I got it", systemImage: "checkmark", base: Theme.Color.correct) {
+                        coordinator.score(.gotIt)
+                    }
+                    scoreButton(title: "Not yet", systemImage: "arrow.counterclockwise", base: Theme.Color.gentle) {
+                        coordinator.score(.notYet)
+                    }
+                }
+                .disabled(!coordinator.buttonsEnabled)
+                .opacity(coordinator.buttonsEnabled ? 1 : 0.5)
+            } else {
+                Button {
+                    coordinator.revealAnswer()
+                } label: {
+                    Text("Show answer")
+                        .font(Theme.Font.label(20))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 110)
+                }
+                .buttonStyle(ChunkyKeyStyle(base: Theme.Color.primary, deep: Theme.Color.primary.shaded(by: -0.35)))
+                .disabled(!coordinator.buttonsEnabled)
+                .opacity(coordinator.buttonsEnabled ? 1 : 0.5)
             }
         }
-        .disabled(!coordinator.buttonsEnabled)
-        .opacity(coordinator.buttonsEnabled ? 1 : 0.5)
     }
 
     private func scoreButton(title: String, systemImage: String, base: Color,

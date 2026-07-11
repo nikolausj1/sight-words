@@ -2,13 +2,15 @@ import SwiftUI
 import SwiftData
 
 /// Screen C — Home hub (§6.3). Landscape layout: profile chip upper-left, gear
-/// upper-right, three big mode keys centered. Practice Together is wired to a
-/// real session; On My Own / Tricky Words stay visually enabled but
-/// non-functional until their phases land.
+/// upper-right, three big mode keys centered. All three modes open a real
+/// session (Practice Together parent-scored, On My Own solo, Tricky Words the
+/// needsReview/learning-only deck).
 struct HomeView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \Profile.createdAt) private var profiles: [Profile]
     @State private var showSession = false
+    @State private var showSolo = false
+    @State private var showTricky = false
 
     private var profile: Profile? { profiles.first(where: { $0.isActive }) ?? profiles.first }
     private var service: LearningService { LearningService(context: context) }
@@ -21,6 +23,13 @@ struct HomeView: View {
         guard let profile else { return 0 }
         return service.readyCount(for: profile)
     }
+    private var trickyCount: Int {
+        guard let profile else { return 0 }
+        return service.countTricky(for: profile)
+    }
+    /// §6.3: "Tricky Words empty" disables the button regardless of the
+    /// general empty/nothing-due state.
+    private var trickyEnabled: Bool { hasActiveWords && trickyCount > 0 }
 
     var body: some View {
         ZStack {
@@ -38,11 +47,14 @@ struct HomeView: View {
                     }
                     modeButton(title: "On My Own", systemImage: "person.fill",
                                base: Theme.Color.correct, enabled: hasActiveWords) {
-                        // Wired to a real session in a later phase.
+                        Feedback.fire(.keyTap)
+                        showSolo = true
                     }
-                    modeButton(title: "Tricky\nWords", systemImage: "star.fill",
-                               base: Theme.Color.accent, enabled: hasActiveWords) {
-                        // Wired to a real session in a later phase.
+                    modeButton(title: trickyEnabled ? "Tricky\nWords" : "No tricky\nwords right now!",
+                               systemImage: "star.fill",
+                               base: Theme.Color.accent, enabled: trickyEnabled) {
+                        Feedback.fire(.keyTap)
+                        showTricky = true
                     }
                 }
 
@@ -59,6 +71,16 @@ struct HomeView: View {
                 SessionView(profile: profile, context: context)
             }
         }
+        .fullScreenCover(isPresented: $showSolo) {
+            if let profile {
+                SessionView(profile: profile, context: context, kind: .solo)
+            }
+        }
+        .fullScreenCover(isPresented: $showTricky) {
+            if let profile {
+                SessionView(profile: profile, context: context, kind: .tricky)
+            }
+        }
         .onAppear { applyDemoArgsIfNeeded() }
     }
 
@@ -72,11 +94,16 @@ struct HomeView: View {
 
     private func applyDemoArgsIfNeeded() {
         #if DEBUG
-        guard !showSession else { return }
+        guard !showSession, !showSolo, !showTricky else { return }
         let args = ProcessInfo.processInfo.arguments
         if args.contains("-demoPractice") || args.contains("-demoReteach")
             || args.contains("-demoComplete") || args.contains("-demoSentence") {
             showSession = true
+        } else if args.contains("-demoSolo") || args.contains("-demoSoloAnswer") {
+            showSolo = true
+        } else if args.contains("-demoTricky") {
+            if let profile { service.seedTrickyWordsIfNeeded(for: profile) }
+            showTricky = true
         }
         #endif
     }

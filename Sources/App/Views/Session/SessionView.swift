@@ -47,6 +47,7 @@ struct SessionView: View {
         if args.contains("-demoReteach") { coordinator.enableDemo(.reteach) }
         else if args.contains("-demoComplete") { coordinator.enableDemo(.complete) }
         else if args.contains("-demoSentence") { coordinator.enableDemo(.sentence) }
+        else if args.contains("-demoSoloAnswer") { coordinator.enableDemo(.soloAnswer) }
         #endif
     }
 }

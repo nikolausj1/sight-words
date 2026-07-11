@@ -19,6 +19,10 @@ final class Profile {
     var voiceCheckOn: Bool = false
     var sessionSize: Int = 12
 
+    /// Control style ("parent" | "solo") of the last Practice Together/On My Own
+    /// session — Tricky Words (§6.3) has no controls of its own and mirrors this.
+    var lastUsedControlStyle: String = "parent"
+
     var streakDays: Int = 0
     var lastPracticeDate: Date?
 

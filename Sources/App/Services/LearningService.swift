@@ -102,6 +102,13 @@ struct LearningService {
         }.count
     }
 
+    /// Count of words eligible for a Tricky Words session (needsReview or
+    /// learning) — mirrors `SessionBuilder`'s `.tricky` candidate filter so the
+    /// home screen's disabled state (§6.3) matches what the deck would build.
+    func countTricky(for profile: Profile) -> Int {
+        pool(for: profile).filter { $0.needsReview || $0.state == .learning }.count
+    }
+
     // MARK: Recording
 
     /// Persists a scored word: updates the existing progress record, or creates
@@ -140,6 +147,13 @@ struct LearningService {
         try? context.save()
     }
 
+    /// Persists which control style (parent-scored vs solo) a session used, so a
+    /// later Tricky Words session (§6.3) can mirror the last-used style.
+    func recordControlStyleUsed(profile: Profile, style: String) {
+        profile.lastUsedControlStyle = style
+        try? context.save()
+    }
+
     private func updateStreak(profile: Profile, now: Date, calendar: Calendar = .current) {
         defer { profile.lastPracticeDate = now }
         guard let last = profile.lastPracticeDate else { profile.streakDays = 1; return }
@@ -156,6 +170,28 @@ struct LearningService {
     func wipeStore() {
         for p in allProfiles() { context.delete(p) }
         for w in allWordRecords() { context.delete(w) }
+        try? context.save()
+    }
+
+    /// `-demoTricky` needs real content: if this profile has no tricky
+    /// candidates yet, marks a couple of its active words as missed/learning so
+    /// the Tricky Words screen has something to show. No-ops once any exist.
+    func seedTrickyWordsIfNeeded(for profile: Profile) {
+        guard countTricky(for: profile) == 0 else { return }
+        for word in activeWords(for: profile).prefix(2) {
+            let wp: WordProgressRecord
+            if let existing = profile.wordProgress.first(where: { $0.wordText == word.text }) {
+                wp = existing
+            } else {
+                wp = WordProgressRecord(wordText: word.text)
+                wp.profile = profile
+                context.insert(wp)
+            }
+            wp.stateRaw = WordState.learning.rawValue
+            wp.needsReview = true
+            wp.timesSeen = max(wp.timesSeen, 1)
+            wp.timesMissed = max(wp.timesMissed, 1)
+        }
         try? context.save()
     }
     #endif
