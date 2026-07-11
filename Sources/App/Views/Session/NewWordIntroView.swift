@@ -9,11 +9,18 @@ struct NewWordIntroView: View {
 
     var body: some View {
         VStack(spacing: Theme.Metric.gap * 1.5) {
-            Text("New word")
-                .font(Theme.Font.label(16))
-                .foregroundStyle(.white)
-                .padding(.horizontal, 18).padding(.vertical, 8)
-                .background(Capsule().fill(Theme.Color.primary))
+            // Contract banner: "listening time" while the app teaches, then a
+            // green "Your turn!" the moment the closing cue asks the child to
+            // read — the visible half of the audio handoff.
+            HStack(spacing: 8) {
+                Image(systemName: coordinator.introYourTurn ? "mic.fill" : "ear.fill")
+                Text(coordinator.introYourTurn ? "Your turn!" : "New word — listen!")
+            }
+            .font(Theme.Font.label(16))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 18).padding(.vertical, 8)
+            .background(Capsule().fill(coordinator.introYourTurn ? Theme.Color.correct : Theme.Color.primary))
+            .animation(Theme.Motion.snappy, value: coordinator.introYourTurn)
 
             Text(coordinator.currentWord)
                 .font(Theme.Font.display(140))

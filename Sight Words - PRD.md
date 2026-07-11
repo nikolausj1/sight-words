@@ -150,12 +150,12 @@ Every 5 cards, a one-beat low-key acknowledgment (e.g. the progress strip pulses
 
 ### 6.5 New-word introduction (inline, within a session)
 
-First time a word is ever shown to this profile:
+First time a word is ever shown to this profile (restructured in the v1.3 solo-flow pass — the child is asked to say the word exactly once, at the moment the app is actually able to hear it):
 
-1. Word appears with a soft "New word" tag; app says the word.
-2. "Say {word}." — pause for him to repeat.
-3. Sentence appears below and is read aloud.
-4. Card flips into a normal practice card later in the same session (counts as its first scored exposure).
+1. Word appears under a "👂 New word — listen!" banner; app says the word.
+2. Sentence appears below and is read aloud. (All of this is visibly "listening time" — no mic.)
+3. Banner flips to a green "🎤 Your turn!" as the app says "Your turn! Say {word}" — and hands straight off to…
+4. …the normal practice card for that word (mic live in voice sessions), whose read is the first scored exposure.
 
 ### 6.6 Reteach flow (inline interstitial)
 

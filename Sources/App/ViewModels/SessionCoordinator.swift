@@ -74,6 +74,10 @@ final class SessionCoordinator: ObservableObject {
     @Published private(set) var buttonsEnabled: Bool = true
     @Published private(set) var reteachStep: Int = 0      // 0: word, 1: say-it pause, 2: spaced, 3: sentence
     @Published private(set) var revealed: Bool = false    // On My Own (§6.7): Show-answer has been tapped
+    /// Intro beat marker: false = "listening time" (app speaks word/sentence),
+    /// true = the closing "Your turn!" cue is playing. Drives the intro
+    /// banner's Listen -> Your turn swap so the contract switch is visible.
+    @Published private(set) var introYourTurn: Bool = false
 
     /// Voice-check overlay state for the card on screen (§6.8). Structurally
     /// only reachable in solo (On My Own) sessions — see `voiceCheckEligible`.
@@ -350,17 +354,25 @@ final class SessionCoordinator: ObservableObject {
         }
     }
 
+    /// New-word intro, restructured (solo-flow UX pass): the whole intro is
+    /// "listening time" (word, then sentence), and the ONE ask to say the word
+    /// is the closing "Your turn!" cue — which hands straight off to the
+    /// practice card, where the mic is actually live. The old shape asked the
+    /// child to say the word mid-intro into a dead mic, then talked over them
+    /// and asked again on the card.
     private func runIntro(word: String, sentence: String?) async {
+        introYourTurn = false
         speech.speakWord(word)
         try? await Task.sleep(nanoseconds: 900_000_000)
-        speech.speak(segments: [.phrase(.say), .word(word)])
-        try? await Task.sleep(nanoseconds: 3_000_000_000)
         if let sentence {
             sentenceRevealed = true
             speech.speakSentence(forWord: word, text: sentence)
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            try? await Task.sleep(nanoseconds: 2_600_000_000)
             sentenceRevealed = false
         }
+        introYourTurn = true
+        speech.speak(segments: [.phrase(.yourTurn), .pause(0.15), .phrase(.say), .word(word)])
+        try? await Task.sleep(nanoseconds: 2_200_000_000)
     }
 
     private func enterCardPhase() {

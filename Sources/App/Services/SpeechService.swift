@@ -16,6 +16,7 @@ enum PhraseClip {
     case tapBlueButton
     case readOutLoud
     case wasThatIt
+    case yourTurn
 
     var slug: String {
         switch self {
@@ -29,6 +30,7 @@ enum PhraseClip {
         case .tapBlueButton: return "tap-blue-button"
         case .readOutLoud: return "read-out-loud"
         case .wasThatIt: return "was-that-it"
+        case .yourTurn: return "your-turn"
         }
     }
 
@@ -44,6 +46,7 @@ enum PhraseClip {
         case .tapBlueButton: return "Tap the blue button to hear it."
         case .readOutLoud: return "Read each word out loud!"
         case .wasThatIt: return "Was that it? Tap the green check — or try again!"
+        case .yourTurn: return "Your turn!"
         }
     }
 }
