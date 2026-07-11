@@ -26,6 +26,16 @@ enum ControlStyle: String {
     case solo = "solo"
 }
 
+/// Which mic input style a voice-check-eligible solo session uses: `.auto`
+/// (always-listening, the original/default behavior — unchanged by this
+/// feature) or `.hold`, a big hold-to-talk button the child presses (or
+/// taps to latch) instead of the mic always being live. Persisted on
+/// `Profile.micModeRaw`; only ever consulted when `voiceCheckEligible`.
+enum MicMode: String {
+    case auto
+    case hold
+}
+
 /// Voice-check overlay UI state for the current card (§6.8). `.hidden` covers
 /// both "off/unavailable" and "not currently listening" — `PracticeCardView`
 /// renders nothing in that case.
@@ -80,9 +90,17 @@ final class SessionCoordinator: ObservableObject {
     /// besides waiting. Cleared by any interaction (reveal, score, confirm bar
     /// action, or moving to a new card).
     @Published private(set) var nudgeShowAnswer: Bool = false
+    /// Hold mode only (§ mic-mode): true while the big mic button is latched
+    /// into continuous listening from a short tap (as opposed to a live
+    /// finger-down hold) — see `holdMicPressBegan`/`holdMicPressEnded`. Drives
+    /// the button's "held" visual the same as an actual hold would.
+    @Published private(set) var holdMicLatched: Bool = false
 
     /// Fixed for the whole session — see `ControlStyle`.
     let controlStyle: ControlStyle
+    /// Fixed for the whole session — see `MicMode`. Always `.auto` outside
+    /// solo sessions.
+    let micMode: MicMode
 
     private let service: LearningService
     private let speech: SpeechService
@@ -100,11 +118,44 @@ final class SessionCoordinator: ObservableObject {
         return HomophoneTable(json: data)
     }()
 
+    /// Parallel to `homophones` above: Engine's `HomophoneTable` (frozen)
+    /// only exposes `matches(heard:target:)`, no accessor for a word's whole
+    /// group, so contextual-string biasing (§ contextual-strings) parses the
+    /// same bundled JSON a second time here to get it.
+    private static let homophoneGroups: [[String]] = {
+        guard let url = Bundle.main.url(forResource: "homophones", withExtension: "json"),
+              let data = try? Data(contentsOf: url),
+              let groups = try? JSONDecoder().decode([[String]].self, from: data) else { return [] }
+        return groups
+    }()
+
+    /// The contextual-string bias set for `target` (§ contextual-strings,
+    /// always on regardless of mic mode): the target word plus every member
+    /// of its homophone group, if it's in one, so the on-device recognizer
+    /// favors them over acoustically similar words. Falls back to just the
+    /// target when it's in no group.
+    private static func contextualStrings(for target: String) -> [String] {
+        let lower = target.lowercased()
+        if let group = homophoneGroups.first(where: { $0.contains { $0.lowercased() == lower } }) {
+            return group
+        }
+        return [target]
+    }
+
     private var voiceCheckTries = 0
     /// Last moment the teacher voice was heard playing (self-hearing guard).
     private var lastTeacherSpeechAt: Date?
     private var voiceCheckCardToken = UUID()
     private var voiceCheckSilenceTimer: DispatchWorkItem?
+    /// Hold mode only: when the current press-down began, so release can tell
+    /// a short tap (-> latch) from a genuine hold (-> stop). Cleared on release.
+    private var holdPressStartedAt: Date?
+    /// Hold mode only (§ mic-mode): moment of the first partial/final
+    /// transcript seen in the *current* listening session — response time is
+    /// measured card-appear -> this, not card-appear -> accept, since the
+    /// mic isn't live until the child presses. Reset every time a fresh
+    /// listening session starts; consulted by `acceptVoiceMatch` when set.
+    private var firstPartialAt: Date?
     /// Session-start contract line (§6.8 UX pass, rule 7) — plays once, after
     /// the first card is up (and after its intro, if any), solo + voice-check
     /// sessions only.
@@ -135,6 +186,21 @@ final class SessionCoordinator: ObservableObject {
         case .parentScored: self.controlStyle = .parentScored
         case .solo: self.controlStyle = .solo
         case .tricky: self.controlStyle = ControlStyle(rawValue: profile.lastUsedControlStyle) ?? .parentScored
+        }
+
+        if kind == .solo {
+            #if DEBUG
+            let args = ProcessInfo.processInfo.arguments
+            if args.contains("-demoHoldMic") || args.contains("-demoHoldMicHeld") {
+                self.micMode = .hold
+            } else {
+                self.micMode = MicMode(rawValue: profile.micModeRaw) ?? .auto
+            }
+            #else
+            self.micMode = MicMode(rawValue: profile.micModeRaw) ?? .auto
+            #endif
+        } else {
+            self.micMode = .auto
         }
     }
 
@@ -304,7 +370,17 @@ final class SessionCoordinator: ObservableObject {
         revealed = false
         revealedResponseMs = nil
         resetVoiceCheckForNewCard()
-        if voiceCheckEligible { beginVoiceCheckListening() }
+        if voiceCheckEligible {
+            if micMode == .hold {
+                // Hold mode never auto-listens on card appear (§ mic-mode) —
+                // just arm the silence nudge so a child who never presses
+                // still gets the "give it a try" prompt.
+                armVoiceCheckSilencePrompt(token: voiceCheckCardToken)
+                maybeStartHeldDemo()
+            } else {
+                beginVoiceCheckListening()
+            }
+        }
         playSessionStartLineIfNeeded()
         demoStep()
     }
@@ -346,6 +422,14 @@ final class SessionCoordinator: ObservableObject {
         return profile.voiceCheckOn && voiceCheck.isAvailable()
     }
 
+    /// True when this card should show the hold-to-talk button instead of
+    /// always-on listening (§ mic-mode): solo + voice-check eligible + the
+    /// profile (or DEBUG mock) chose `.hold`. Read by the view to decide
+    /// which mic UI to render.
+    var holdModeActive: Bool {
+        voiceCheckEligible && micMode == .hold
+    }
+
     private func resetVoiceCheckForNewCard() {
         voiceCheckSilenceTimer?.cancel(); voiceCheckSilenceTimer = nil
         voiceCheck.stopListening()
@@ -355,6 +439,9 @@ final class SessionCoordinator: ObservableObject {
         micLevel = 0
         micFlashCorrect = false
         nudgeShowAnswer = false
+        holdMicLatched = false
+        holdPressStartedAt = nil
+        firstPartialAt = nil
     }
 
     /// Stops any in-flight listening/timer and hides the overlay — called on
@@ -364,6 +451,8 @@ final class SessionCoordinator: ObservableObject {
         voiceCheck.stopListening()
         voiceCheckUIState = .hidden
         micLevel = 0
+        holdMicLatched = false
+        holdPressStartedAt = nil
     }
 
     /// Public teardown for the view layer (`.onDisappear`) so a mid-session
@@ -372,14 +461,25 @@ final class SessionCoordinator: ObservableObject {
 
     private func beginVoiceCheckListening() {
         voiceCheckUIState = .listening
+        startVoiceListening(target: currentWord)
+        armVoiceCheckSilencePrompt(token: voiceCheckCardToken)
+    }
+
+    /// Single entry point for every `voiceCheck.startListening` call (auto
+    /// mode's card-appear listen, hold mode's press/latch, near-miss/confirm
+    /// restarts): wires the transcript/level callbacks against the current
+    /// card token, always passes the contextual-strings bias
+    /// (§ contextual-strings — target + its homophone group), and resets
+    /// `firstPartialAt` for the new listening session (§ mic-mode response
+    /// time).
+    private func startVoiceListening(target: String) {
+        firstPartialAt = nil
         let token = voiceCheckCardToken
-        let target = currentWord
-        voiceCheck.startListening(target: target) { [weak self] heard, confidence, isFinal in
+        voiceCheck.startListening(target: target, contextualStrings: Self.contextualStrings(for: target)) { [weak self] heard, confidence, isFinal in
             self?.handleVoiceTranscript(heard, confidence: confidence, isFinal: isFinal, token: token)
         } onLevel: { [weak self] level in
             self?.micLevel = level
         }
-        armVoiceCheckSilencePrompt(token: token)
     }
 
     /// Compressed under `-mockVoiceCheckNudge` so the two silence windows
@@ -397,15 +497,32 @@ final class SessionCoordinator: ObservableObject {
         return 8.0
     }
 
+    /// Whether a still-waiting silence nudge should fire: normally only while
+    /// actively `.listening`, but hold mode also counts `.hidden` (the child
+    /// hasn't pressed the mic button yet at all — the whole point of the
+    /// first nudge in that mode is to tell them to). Never fires while
+    /// `.confirming` — the confirm bar is its own, more specific prompt.
+    private var canNudgeStillWaiting: Bool {
+        switch voiceCheckUIState {
+        case .listening: return true
+        case .hidden: return holdModeActive
+        case .confirming: return false
+        }
+    }
+
     /// First silence window -> gentle spoken nudge, still listening passively
-    /// (§6.8). Rule 6 (UX pass): arms a second, longer window right after —
-    /// if that also elapses in silence, speaks the "tap the blue button" line
-    /// and pulses the Show-answer button, since a pre-reader alone needs an
-    /// obvious next step besides waiting forever. No third timer after that.
+    /// (§6.8) — or, in hold mode, still waiting for the first press. Rule 6
+    /// (UX pass): arms a second, longer window right after — if that also
+    /// elapses in silence, speaks the "tap the blue button" line and pulses
+    /// the Show-answer button, since a pre-reader alone needs an obvious next
+    /// step besides waiting forever. No third timer after that.
     private func armVoiceCheckSilencePrompt(token: UUID) {
+        // Cancel any previously-armed window first — hold mode in particular
+        // re-arms this on a fresh press (§ mic-mode), and a stale timer from
+        // card-appear firing later would nudge a child who's already talking.
+        voiceCheckSilenceTimer?.cancel()
         let item = DispatchWorkItem { [weak self] in
-            guard let self, self.voiceCheckCardToken == token,
-                  case .listening = self.voiceCheckUIState else { return }
+            guard let self, self.voiceCheckCardToken == token, self.canNudgeStillWaiting else { return }
             self.speech.speak(segments: [.phrase(.giveItATry)])
             self.armSecondVoiceCheckSilencePrompt(token: token)
         }
@@ -414,9 +531,9 @@ final class SessionCoordinator: ObservableObject {
     }
 
     private func armSecondVoiceCheckSilencePrompt(token: UUID) {
+        voiceCheckSilenceTimer?.cancel()
         let item = DispatchWorkItem { [weak self] in
-            guard let self, self.voiceCheckCardToken == token,
-                  case .listening = self.voiceCheckUIState else { return }
+            guard let self, self.voiceCheckCardToken == token, self.canNudgeStillWaiting else { return }
             self.speech.speak(segments: [.phrase(.tapBlueButton)])
             self.nudgeShowAnswer = true
         }
@@ -464,6 +581,12 @@ final class SessionCoordinator: ObservableObject {
         case .hidden: return   // voice-check not active for this card — ignore
         }
 
+        // Hold mode's response time is card-appear -> first sign of speech,
+        // not card-appear -> accept, since the mic isn't live until pressed
+        // (§ mic-mode). Auto mode never reads this, so leaving it set here
+        // doesn't change its timing.
+        if holdModeActive, firstPartialAt == nil { firstPartialAt = Date() }
+
         let tokens = heard.lowercased()
             .components(separatedBy: CharacterSet.alphanumerics.inverted)
             .filter { !$0.isEmpty }
@@ -510,12 +633,7 @@ final class SessionCoordinator: ObservableObject {
             voiceCheck.stopListening()
             voiceCheckUIState = .listening
             speech.speak(segments: [.phrase(.giveItATry)])
-            let token = voiceCheckCardToken
-            voiceCheck.startListening(target: currentWord) { [weak self] h, c, f in
-                self?.handleVoiceTranscript(h, confidence: c, isFinal: f, token: token)
-            } onLevel: { [weak self] level in
-                self?.micLevel = level
-            }
+            startVoiceListening(target: currentWord)
         } else {
             // Rule 4: deliberately does NOT stop listening — the mic stays
             // live right through confirmation, so a clean repeat just works.
@@ -530,11 +648,7 @@ final class SessionCoordinator: ObservableObject {
     private func restartMicWhileConfirming(token: UUID) {
         guard token == voiceCheckCardToken, case .confirming = voiceCheckUIState else { return }
         voiceCheck.stopListening()
-        voiceCheck.startListening(target: currentWord) { [weak self] h, c, f in
-            self?.handleVoiceTranscript(h, confidence: c, isFinal: f, token: token)
-        } onLevel: { [weak self] level in
-            self?.micLevel = level
-        }
+        startVoiceListening(target: currentWord)
     }
 
     /// "Yes" on the confirmation bar (§6.8).
@@ -549,13 +663,8 @@ final class SessionCoordinator: ObservableObject {
         guard case .confirming = voiceCheckUIState else { return }
         nudgeShowAnswer = false
         voiceCheckUIState = .listening
-        let token = voiceCheckCardToken
-        voiceCheck.startListening(target: currentWord) { [weak self] h, c, f in
-            self?.handleVoiceTranscript(h, confidence: c, isFinal: f, token: token)
-        } onLevel: { [weak self] level in
-            self?.micLevel = level
-        }
-        armVoiceCheckSilencePrompt(token: token)
+        startVoiceListening(target: currentWord)
+        armVoiceCheckSilencePrompt(token: voiceCheckCardToken)
     }
 
     /// A confident voice match (or a confirmed near-miss) auto-scores `.gotIt`
@@ -570,7 +679,17 @@ final class SessionCoordinator: ObservableObject {
         guard case .card = phase, buttonsEnabled else { return }
         if !revealed {
             revealed = true
-            revealedResponseMs = max(0, Int(Date().timeIntervalSince(cardAppearedAt) * 1000))
+            // Hold mode (§ mic-mode): measure from the first sign of speech
+            // in this listening session, not from the moment it's accepted —
+            // the mic isn't live until pressed, so "accept time" alone would
+            // flatter every hold-mode response. `firstPartialAt` is nil in
+            // auto mode (never set there), so this falls back to the
+            // original accept-time measurement, unchanged.
+            if let firstPartialAt {
+                revealedResponseMs = max(0, Int(firstPartialAt.timeIntervalSince(cardAppearedAt) * 1000))
+            } else {
+                revealedResponseMs = max(0, Int(Date().timeIntervalSince(cardAppearedAt) * 1000))
+            }
         }
         micFlashCorrect = true
         Task { [weak self] in
@@ -578,6 +697,72 @@ final class SessionCoordinator: ObservableObject {
             guard let self else { return }
             self.micFlashCorrect = false
             self.score(.gotIt)
+        }
+    }
+
+    // MARK: Hold mode (mic-mode "hold") — big button press/latch lifecycle
+
+    /// Finger down on the hold-to-talk button. Starts a fresh listening
+    /// session unless one is already effectively live (latched, or the mic
+    /// is already up mid-confirmation — rule 4 keeps that one running
+    /// regardless of the button).
+    func holdMicPressBegan() {
+        guard holdModeActive, case .card = phase, buttonsEnabled else { return }
+        if case .confirming = voiceCheckUIState { return }
+        holdPressStartedAt = .now
+        if holdMicLatched { return }   // a second tap while latched — release decides
+        guard case .hidden = voiceCheckUIState else { return }
+        voiceCheckUIState = .listening
+        startVoiceListening(target: currentWord)
+        armVoiceCheckSilencePrompt(token: voiceCheckCardToken)
+    }
+
+    /// Finger up. A press shorter than ~0.35s latches into continuous
+    /// listening instead of stopping — small fingers can't reliably sustain
+    /// a hold; a second tap while latched unlatches (and always stops,
+    /// regardless of that tap's own duration). A genuine hold always stops
+    /// on release. Never touches anything while the confirm bar is up — the
+    /// mic already stays live through that on its own (rule 4).
+    func holdMicPressEnded() {
+        guard holdModeActive else { return }
+        if case .confirming = voiceCheckUIState {
+            holdPressStartedAt = nil
+            return
+        }
+        let heldDuration = holdPressStartedAt.map { Date().timeIntervalSince($0) } ?? .infinity
+        holdPressStartedAt = nil
+
+        if holdMicLatched {
+            holdMicLatched = false
+            stopHoldListening()
+            return
+        }
+        if heldDuration < 0.35 {
+            holdMicLatched = true
+            return
+        }
+        stopHoldListening()
+    }
+
+    /// Release/unlatch teardown (Cookie Caper's release flow, ported):
+    /// `endAudio()`s right away but keeps the listening UI/task alive for a
+    /// short grace window so a trailing FINAL transcript can still arrive
+    /// and score — never a hard cancel. If nothing usable arrives in that
+    /// window, tears down for real. A confident match or near-miss landing
+    /// in the meantime just proceeds via the normal `handleVoiceTranscript`
+    /// path (state is still `.listening`, exactly as if the mic were still
+    /// physically held).
+    private func stopHoldListening() {
+        guard case .listening = voiceCheckUIState else { return }
+        let token = voiceCheckCardToken
+        voiceCheck.endHoldListening()
+        voiceCheckSilenceTimer?.cancel(); voiceCheckSilenceTimer = nil
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            guard let self, self.voiceCheckCardToken == token else { return }
+            guard case .listening = self.voiceCheckUIState else { return }
+            self.voiceCheck.stopListening()
+            self.voiceCheckUIState = .hidden
+            self.micLevel = 0
         }
     }
 
@@ -639,8 +824,25 @@ final class SessionCoordinator: ObservableObject {
             }
         }
     }
+
+    /// `-demoHoldMicHeld` (§ mic-mode): a real hold/latch can't be automated
+    /// in simctl, so this forces the button into the "held" look shortly
+    /// after the card appears — latches listening and starts the mock, which
+    /// (per its own `-demoHoldMicHeld` handling) emits a near-miss then
+    /// clean repeats, exercising the full confirm -> auto-accept path.
+    private func maybeStartHeldDemo() {
+        guard ProcessInfo.processInfo.arguments.contains("-demoHoldMicHeld") else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            guard let self, case .card = self.phase, self.holdModeActive,
+                  case .hidden = self.voiceCheckUIState else { return }
+            self.holdMicLatched = true
+            self.voiceCheckUIState = .listening
+            self.startVoiceListening(target: self.currentWord)
+        }
+    }
     #else
     private func onReteachEntered() {}
     private func demoStep() {}
+    private func maybeStartHeldDemo() {}
     #endif
 }

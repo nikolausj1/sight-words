@@ -188,6 +188,8 @@ Behavior per card:
 - **Self-hearing guard:** transcripts heard while the teacher voice is playing (or within ~1s after) are discarded — the mic has no echo cancellation and would otherwise score the iPad's own speaker output (v1.1).
 - **No match after 2 confirmation prompts or no speech:** falls back to Show answer + self-score. Recognition failure is never recorded as an incorrect answer. After a second silence window (~6s + ~8s), the app says "Tap the blue button to hear it" and pulses the Show answer button.
 - **Feedback:** the mic indicator's pulse follows the live input level, and flashes green on an accepted match. Solo sessions with voice-check on open with a one-time spoken "Read each word out loud!" (v1.1).
+- **Mic mode** (parent setting, per profile, v1.2): **Automatic** (default — always listening during a card, as above) or **Hold to talk** — a big round mic button (Cookie Caper's proven pattern: hold primary, short-tap latches for small fingers); mic is hot only while held, release still delivers the trailing final transcript, and response time measures card-appear → first heard speech.
+- The recognizer is biased toward the current card via `contextualStrings` (target word + its homophone group), both modes (v1.2).
 - Manual buttons always override anything voice-check concluded.
 
 **Permission denied:** the settings toggle shows "Microphone access is off — enable it in the Settings app" with a deep link; sessions behave as if voice-check were off. **Recognizer unavailable** (unsupported device/locale): toggle disabled with a one-line explanation.

@@ -82,7 +82,12 @@ final class VoiceCheckService {
     /// fires for every partial/final result with confidence + finality; all
     /// match/homophone/near-miss logic lives in the caller (`SessionCoordinator`)
     /// — this service only streams raw recognizer output.
+    ///
+    /// `contextualStrings` biases the recognizer toward the target word and
+    /// its homophone-group members (always on, both mic modes) — no-op on
+    /// the DEBUG mock path, which never touches a real request.
     func startListening(target: String,
+                         contextualStrings: [String] = [],
                          onTranscript: @escaping (_ text: String, _ confidence: Float, _ isFinal: Bool) -> Void,
                          onLevel: @escaping (_ level: Float) -> Void = { _ in }) {
         #if DEBUG
@@ -101,6 +106,7 @@ final class VoiceCheckService {
         let req = SFSpeechAudioBufferRecognitionRequest()
         req.shouldReportPartialResults = true
         req.requiresOnDeviceRecognition = true
+        req.contextualStrings = contextualStrings
         request = req
 
         let input = audioEngine.inputNode
@@ -137,6 +143,24 @@ final class VoiceCheckService {
                 }
             }
         }
+    }
+
+    /// Hold-to-talk release (mic-mode "hold"): ends the audio input right away
+    /// (stops the engine/tap — no more buffers needed) but deliberately does
+    /// NOT cancel the recognition task or tear down the request. On-device
+    /// recognition often needs a beat after `endAudio()` to deliver the FINAL
+    /// transcript for whatever was already said; hard-cancelling here would
+    /// drop it. The in-flight task's own callback (final result or error) —
+    /// or the caller's short grace timer — still calls `stopListening()` to
+    /// finish the teardown, same as Cookie Caper's release flow.
+    func endHoldListening() {
+        #if DEBUG
+        if Self.isMockActive { return }   // mock's own timers self-manage; nothing to end early
+        #endif
+        guard isListening else { return }
+        if audioEngine.isRunning { audioEngine.stop() }
+        audioEngine.inputNode.removeTap(onBus: 0)
+        request?.endAudio()
     }
 
     /// Stops listening and restores the `.ambient` session (§6.8: "stop on card
@@ -217,6 +241,7 @@ final class VoiceCheckService {
         let args = ProcessInfo.processInfo.arguments
         return args.contains("-mockVoiceCheck") || args.contains("-mockVoiceCheckConfirm")
             || args.contains("-mockVoiceCheckConfirmRepeat") || args.contains("-mockVoiceCheckNudge")
+            || args.contains("-demoHoldMic") || args.contains("-demoHoldMicHeld")
     }
 
     /// Fakes the recognition pipeline and never taps the real recognizer/audio
@@ -243,7 +268,8 @@ final class VoiceCheckService {
         guard !args.contains("-mockVoiceCheckNudge") else { return }
 
         let heard: String
-        if args.contains("-mockVoiceCheckConfirm") || args.contains("-mockVoiceCheckConfirmRepeat") {
+        if args.contains("-mockVoiceCheckConfirm") || args.contains("-mockVoiceCheckConfirmRepeat")
+            || args.contains("-demoHoldMicHeld") {
             heard = target + "s"
         } else if let pair = args.first(where: { $0.hasPrefix("heard=") }) {
             heard = String(pair.dropFirst("heard=".count))
@@ -257,7 +283,7 @@ final class VoiceCheckService {
         mockWorkItem = item
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5, execute: item)
 
-        if args.contains("-mockVoiceCheckConfirmRepeat") {
+        if args.contains("-mockVoiceCheckConfirmRepeat") || args.contains("-demoHoldMicHeld") {
             // Re-emit the clean repeat every 3s (like a real kid repeating the
             // word) — a single shot can land inside the self-hearing guard's
             // window around the spoken "I heard …" question and vanish.

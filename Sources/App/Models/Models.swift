@@ -17,6 +17,11 @@ final class Profile {
 
     var soundOn: Bool = true
     var voiceCheckOn: Bool = false
+    /// Mic input style for voice-check (`MicMode` in `SessionCoordinator.swift`):
+    /// "auto" (always-listening, the original/default behavior) or "hold"
+    /// (big hold-to-talk button, solo sessions only). Additive field —
+    /// lightweight SwiftData migration; existing rows just read "auto".
+    var micModeRaw: String = "auto"
     var sessionSize: Int = 12
 
     /// Control style ("parent" | "solo") of the last Practice Together/On My Own

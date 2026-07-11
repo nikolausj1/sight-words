@@ -535,6 +535,7 @@ struct ParentAreaView: View {
                     get: { a.soundOn },
                     set: { a.soundOn = $0; Feedback.soundEnabled = $0; try? context.save() }))
                 voiceCheckToggle(profile: a)
+                micModeRow(profile: a)
                 Divider().padding(.vertical, 2)
                 Text("Session length").font(Theme.Font.label(14)).foregroundStyle(Theme.Color.ink)
                 Picker("Session length", selection: Binding(
@@ -606,6 +607,25 @@ struct ParentAreaView: View {
                 }
             }
         }
+    }
+
+    /// Mic input style row (§ mic-mode): Automatic (always-listening, the
+    /// original default) vs Hold to talk (a big button in the session). Sits
+    /// right under the voice-check toggle and stays visible-but-disabled when
+    /// voice-check is off — there's nothing to configure until it's on.
+    private func micModeRow(profile: Profile) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Microphone").font(Theme.Font.label(14)).foregroundStyle(Theme.Color.ink)
+            Picker("Microphone", selection: Binding(
+                get: { MicMode(rawValue: profile.micModeRaw) ?? .auto },
+                set: { profile.micModeRaw = $0.rawValue; try? context.save() })) {
+                Text("Automatic").tag(MicMode.auto)
+                Text("Hold to talk").tag(MicMode.hold)
+            }
+            .pickerStyle(.segmented)
+        }
+        .disabled(!profile.voiceCheckOn)
+        .opacity(profile.voiceCheckOn ? 1 : 0.5)
     }
 }
 

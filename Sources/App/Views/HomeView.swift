@@ -115,9 +115,11 @@ struct HomeView: View {
             showSession = true
         } else if args.contains("-demoSolo") || args.contains("-demoSoloAnswer")
             || args.contains("-mockVoiceCheck") || args.contains("-mockVoiceCheckConfirm")
-            || args.contains("-mockVoiceCheckConfirmRepeat") || args.contains("-mockVoiceCheckNudge") {
+            || args.contains("-mockVoiceCheckConfirmRepeat") || args.contains("-mockVoiceCheckNudge")
+            || args.contains("-demoHoldMic") || args.contains("-demoHoldMicHeld") {
             // The voice-check mock args (§6.8) imply a solo session — that's
-            // the only mode the overlay can appear in.
+            // the only mode the overlay can appear in. The hold-mic demo args
+            // (§ mic-mode) do too.
             showSolo = true
         } else if args.contains("-demoTricky") {
             if let profile { service.seedTrickyWordsIfNeeded(for: profile) }

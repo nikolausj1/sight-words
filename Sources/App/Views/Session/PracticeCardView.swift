@@ -13,6 +13,9 @@ struct PracticeCardView: View {
             topBar
             Spacer(minLength: 0)
             wordArea
+            if coordinator.holdModeActive {
+                HoldMicButton(coordinator: coordinator)
+            }
             Spacer(minLength: 0)
             voiceCheckConfirmBar
             scoringButtons
@@ -29,9 +32,11 @@ struct PracticeCardView: View {
     /// clean repeat auto-accepts without a tap), so the indicator shows for
     /// both states — plus whenever a confident match just flashed green, even
     /// in the instant before the state resets to `.hidden` on card advance.
+    /// Hidden entirely in hold mode (§ mic-mode) — the big round button IS
+    /// the indicator there.
     @ViewBuilder
     private var voiceCheckIndicator: some View {
-        if coordinator.voiceCheckUIState != .hidden || coordinator.micFlashCorrect {
+        if !coordinator.holdModeActive, coordinator.voiceCheckUIState != .hidden || coordinator.micFlashCorrect {
             PulsingMicIndicator(level: coordinator.micLevel, flashCorrect: coordinator.micFlashCorrect)
                 .padding(.trailing, 4)
                 .transition(.opacity)
@@ -315,5 +320,77 @@ struct PulsingMicIndicator: View {
                 }
             }
             .accessibilityLabel(flashCorrect ? "Heard you!" : "Listening")
+    }
+}
+
+/// Hold-to-talk mic button (§ mic-mode "hold"): a big round key that sits
+/// between the word and the Show-answer bar in place of always-on listening.
+/// Idle: gentle pulse (like `PulsingMicIndicator`'s idle floor). Held/latched:
+/// enlarges slightly, rings correct-green, and pulses with the live
+/// `micLevel` (same signal `PulsingMicIndicator` uses). Gesture is Cookie
+/// Caper's hold-to-talk pattern — `DragGesture(minimumDistance: 0)` for a
+/// live hold — plus a tap-to-toggle fallback for small fingers that can't
+/// sustain one (`SessionCoordinator.holdMicPressBegan/Ended` owns the actual
+/// press-vs-tap timing and mic lifecycle; this view only reports finger
+/// down/up and renders whatever state comes back).
+struct HoldMicButton: View {
+    @ObservedObject var coordinator: SessionCoordinator
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isPressingDown = false
+    @State private var idlePulse = false
+
+    private let baseDiameter: CGFloat = 130
+    private var isActive: Bool { isPressingDown || coordinator.holdMicLatched }
+    private var clampedLevel: CGFloat { CGFloat(min(max(coordinator.micLevel, 0), 1)) }
+
+    /// Idle: a gentle floor pulse (~3%). Held/latched: enlarges (~9%) plus a
+    /// little extra riding on the live mic level, so louder speech visibly
+    /// swells the button.
+    private var diameter: CGFloat {
+        guard !reduceMotion else { return baseDiameter }
+        if isActive { return baseDiameter * (1.09 + clampedLevel * 0.05) }
+        return idlePulse ? baseDiameter * 1.03 : baseDiameter
+    }
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(LinearGradient(colors: [Theme.Color.primary.shaded(by: 0.22), Theme.Color.primary,
+                                              Theme.Color.primary.shaded(by: -0.18)],
+                                     startPoint: .top, endPoint: .bottom))
+                .overlay(Circle().strokeBorder(Theme.Color.correct, lineWidth: isActive ? 8 : 0))
+                .overlay(Circle().strokeBorder(.white.opacity(0.35), lineWidth: 1.5))
+                .shadow(color: .black.opacity(0.35), radius: 10, y: 5)
+
+            Image(systemName: "mic.fill")
+                .font(.system(size: 50, weight: .bold))
+                .foregroundStyle(.white)
+        }
+        .frame(width: diameter, height: diameter)
+        .contentShape(Circle())
+        .animation(Theme.Motion.quick, value: coordinator.micLevel)
+        .animation(Theme.Motion.snappy, value: isActive)
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in
+                    guard !isPressingDown else { return }
+                    isPressingDown = true
+                    coordinator.holdMicPressBegan()
+                }
+                .onEnded { _ in
+                    isPressingDown = false
+                    coordinator.holdMicPressEnded()
+                }
+        )
+        .onAppear { startIdlePulseIfNeeded() }
+        .onChange(of: isActive) { _, _ in startIdlePulseIfNeeded() }
+        .accessibilityLabel(isActive ? "Listening" : "Press and hold, or tap, to say the word")
+    }
+
+    private func startIdlePulseIfNeeded() {
+        guard !isActive, !reduceMotion else { idlePulse = false; return }
+        withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+            idlePulse = true
+        }
     }
 }
