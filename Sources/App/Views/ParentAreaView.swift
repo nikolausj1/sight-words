@@ -1,5 +1,8 @@
 import SwiftUI
 import SwiftData
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// Screen J — parent area (§6.12, near-clone of Math Tutor's ParentAreaView):
 /// gear -> fullScreenCover; dimmed scrim; centered light card, two columns.
@@ -40,6 +43,11 @@ struct ParentAreaView: View {
     @State private var sentenceDrafts: [PersistentIdentifier: String] = [:]
 
     @State private var howOpen = false
+
+    // Voice-check settings flow (§6.8): permission request happens right here,
+    // never mid-session — see `VoiceCheckService.requestPermissions`.
+    @State private var voiceCheckMicDenied = false
+    private let voiceCheck = VoiceCheckService.shared
 
     private let levelOptions: [(label: String, code: String)] =
         [("Pre-K", "PreK"), ("K", "K"), ("1", "1"), ("2", "2"), ("3+", "3")]
@@ -526,11 +534,7 @@ struct ParentAreaView: View {
                 Toggle("Sound effects", isOn: Binding(
                     get: { a.soundOn },
                     set: { a.soundOn = $0; Feedback.soundEnabled = $0; try? context.save() }))
-                Toggle("Voice-check", isOn: Binding(
-                    get: { a.voiceCheckOn },
-                    set: { a.voiceCheckOn = $0; try? context.save() }))
-                Text("Listens while your child reads on their own.")
-                    .font(Theme.Font.label(12)).foregroundStyle(Theme.Color.inkSoft)
+                voiceCheckToggle(profile: a)
                 Divider().padding(.vertical, 2)
                 Text("Session length").font(Theme.Font.label(14)).foregroundStyle(Theme.Color.ink)
                 Picker("Session length", selection: Binding(
@@ -546,6 +550,62 @@ struct ParentAreaView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(Theme.Metric.pad).cardSurface()
         .tint(Theme.Color.primary)
+    }
+
+    /// The voice-check toggle's extended flow (§6.8): permission requested
+    /// right here on ON, snaps back off with a deep link on denial; disabled
+    /// entirely (with a one-line reason) when the recognizer itself is
+    /// unsupported on this device/locale — independent of permission status.
+    @ViewBuilder
+    private func voiceCheckToggle(profile: Profile) -> some View {
+        let unsupported = !voiceCheck.recognizerSupported()
+        VStack(alignment: .leading, spacing: 6) {
+            Toggle("Voice-check", isOn: Binding(
+                get: { profile.voiceCheckOn },
+                set: { newValue in
+                    guard newValue else {
+                        profile.voiceCheckOn = false
+                        voiceCheckMicDenied = false
+                        try? context.save()
+                        return
+                    }
+                    voiceCheck.requestPermissions { granted in
+                        if granted {
+                            profile.voiceCheckOn = true
+                            voiceCheckMicDenied = false
+                            try? context.save()
+                        } else {
+                            // Snap back off — never left in a half-permitted state.
+                            profile.voiceCheckOn = false
+                            voiceCheckMicDenied = true
+                            try? context.save()
+                        }
+                    }
+                }))
+                .disabled(unsupported)
+            if unsupported {
+                Text("Voice-check isn't available on this device.")
+                    .font(Theme.Font.label(12)).foregroundStyle(Theme.Color.inkSoft)
+            } else {
+                Text("Listens while your child reads on their own.")
+                    .font(Theme.Font.label(12)).foregroundStyle(Theme.Color.inkSoft)
+                if voiceCheckMicDenied {
+                    HStack(spacing: 10) {
+                        Text("Microphone access is off — enable it in the Settings app.")
+                            .font(Theme.Font.label(12)).foregroundStyle(Theme.Color.gentle)
+                        Button("Open Settings") {
+                            #if canImport(UIKit)
+                            if let url = URL(string: UIApplication.openSettingsURLString) {
+                                UIApplication.shared.open(url)
+                            }
+                            #endif
+                        }
+                        .font(Theme.Font.label(12))
+                        .buttonStyle(.bordered)
+                    }
+                }
+            }
+        }
     }
 }
 

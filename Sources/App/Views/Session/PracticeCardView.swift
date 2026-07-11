@@ -12,9 +12,54 @@ struct PracticeCardView: View {
             Spacer(minLength: 0)
             wordArea
             Spacer(minLength: 0)
+            voiceCheckConfirmBar
             scoringButtons
         }
         .padding(Theme.Metric.pad)
+        .overlay(alignment: .topTrailing) { voiceCheckIndicator }
+        .animation(Theme.Motion.snappy, value: coordinator.voiceCheckUIState)
+    }
+
+    // MARK: Voice-check overlay (§6.8) — solo sessions only, hidden entirely
+    // when voice-check is off/unavailable (`voiceCheckUIState` stays `.hidden`).
+
+    @ViewBuilder
+    private var voiceCheckIndicator: some View {
+        if case .listening = coordinator.voiceCheckUIState {
+            PulsingMicIndicator()
+                .padding(.trailing, 4)
+                .transition(.opacity)
+        }
+    }
+
+    /// Compact darkPlate bar above the bottom buttons: "I think you said…" +
+    /// Yes / Try again. Manual Show-answer/self-score buttons stay visible and
+    /// functional underneath the whole time (§6.8: manual always overrides).
+    @ViewBuilder
+    private var voiceCheckConfirmBar: some View {
+        if case .confirming(let heard) = coordinator.voiceCheckUIState {
+            HStack(spacing: Theme.Metric.gap) {
+                Text("I think you said “\(heard)”. Is that right?")
+                    .font(Theme.Font.label(16))
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.7)
+                Spacer(minLength: 8)
+                Button { coordinator.voiceCheckConfirmYes() } label: {
+                    Text("Yes").font(Theme.Font.label(15)).frame(width: 84, height: 44)
+                }
+                .buttonStyle(ChunkyKeyStyle(base: Theme.Color.correct,
+                                           deep: Theme.Color.correct.shaded(by: -0.35), corner: 12))
+                Button { coordinator.voiceCheckTryAgain() } label: {
+                    Text("Try again").font(Theme.Font.label(15)).frame(width: 116, height: 44)
+                }
+                .buttonStyle(ChunkyKeyStyle(base: Theme.Color.gentle,
+                                           deep: Theme.Color.gentle.shaded(by: -0.35), corner: 12))
+            }
+            .padding(.horizontal, 18).padding(.vertical, 10)
+            .darkPlate(corner: 16)
+            .transition(.opacity.combined(with: .move(edge: .bottom)))
+        }
     }
 
     private var topBar: some View {
@@ -175,5 +220,29 @@ struct ProgressStrip: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { pulse = false }
         }
         .accessibilityLabel("\(completed) of \(total) words done")
+    }
+}
+
+/// Small pulsing mic indicator (§6.8): darkPlate + `mic.fill`, a gentle scale
+/// pulse while voice-check is actively listening. Purely decorative — no tap
+/// target; manual controls are the only interactive path.
+struct PulsingMicIndicator: View {
+    @State private var pulse = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Image(systemName: "mic.fill")
+            .font(.system(size: 18, weight: .semibold))
+            .foregroundStyle(.white)
+            .frame(width: 44, height: 44)
+            .darkPlate(corner: 14)
+            .scaleEffect(pulse ? 1.12 : 1.0)
+            .onAppear {
+                guard !reduceMotion else { return }
+                withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+                    pulse = true
+                }
+            }
+            .accessibilityLabel("Listening")
     }
 }

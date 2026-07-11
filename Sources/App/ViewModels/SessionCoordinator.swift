@@ -26,6 +26,15 @@ enum ControlStyle: String {
     case solo = "solo"
 }
 
+/// Voice-check overlay UI state for the current card (§6.8). `.hidden` covers
+/// both "off/unavailable" and "not currently listening" — `PracticeCardView`
+/// renders nothing in that case.
+enum VoiceCheckUIState: Equatable {
+    case hidden
+    case listening
+    case confirming(heard: String)
+}
+
 /// The one-session state machine (PRD §6.4-6.6, §6.10). `WordSnapshot` isn't
 /// Equatable (Engine is read-only), so this type deliberately isn't Equatable —
 /// views/coordinator code pattern-matches with `if case` instead of `==`.
@@ -56,15 +65,32 @@ final class SessionCoordinator: ObservableObject {
     @Published private(set) var reteachStep: Int = 0      // 0: word, 1: say-it pause, 2: spaced, 3: sentence
     @Published private(set) var revealed: Bool = false    // On My Own (§6.7): Show-answer has been tapped
 
+    /// Voice-check overlay state for the card on screen (§6.8). Structurally
+    /// only reachable in solo (On My Own) sessions — see `voiceCheckEligible`.
+    @Published private(set) var voiceCheckUIState: VoiceCheckUIState = .hidden
+
     /// Fixed for the whole session — see `ControlStyle`.
     let controlStyle: ControlStyle
 
     private let service: LearningService
     private let speech: SpeechService
+    private let voiceCheck: VoiceCheckService
     private let profile: Profile
     private let kind: SessionKind
     private let sessionDate: Date
     private let sessionStart: Date
+
+    /// Loaded once from the bundled JSON (§6.8) — parses to an empty table if
+    /// the resource is missing, which just disables homophone-set matching.
+    private static let homophones: HomophoneTable = {
+        guard let url = Bundle.main.url(forResource: "homophones", withExtension: "json"),
+              let data = try? Data(contentsOf: url) else { return HomophoneTable(json: Data("[]".utf8)) }
+        return HomophoneTable(json: data)
+    }()
+
+    private var voiceCheckTries = 0
+    private var voiceCheckCardToken = UUID()
+    private var voiceCheckSilenceTimer: DispatchWorkItem?
 
     private var queue: SessionQueue!
     private var currentWordID: String = ""
@@ -79,9 +105,10 @@ final class SessionCoordinator: ObservableObject {
     private var notYetCount = 0
 
     init(service: LearningService, speech: SpeechService, profile: Profile,
-         kind: SessionKind = .parentScored, now: Date = .now) {
+         kind: SessionKind = .parentScored, now: Date = .now, voiceCheck: VoiceCheckService = .shared) {
         self.service = service
         self.speech = speech
+        self.voiceCheck = voiceCheck
         self.profile = profile
         self.kind = kind
         self.sessionDate = now
@@ -116,6 +143,7 @@ final class SessionCoordinator: ObservableObject {
         guard case .card = phase, controlStyle == .solo, buttonsEnabled, !revealed else { return }
         revealed = true
         revealedResponseMs = max(0, Int(Date().timeIntervalSince(cardAppearedAt) * 1000))
+        stopVoiceCheck()   // §6.8: stop listening on reveal; manual path takes over
         speech.speakWord(currentWord)
     }
 
@@ -133,6 +161,7 @@ final class SessionCoordinator: ObservableObject {
     func score(_ result: ScoreResult) {
         guard case .card = phase, buttonsEnabled, let card = queue.currentCard() else { return }
         if controlStyle == .solo, !revealed { return }
+        stopVoiceCheck()   // §6.8: stop listening on card end, however it was scored
         buttonsEnabled = false
         // Solo mode passes the Show-answer tap time (word-appear -> reveal),
         // per §6.7 — not the later self-score tap.
@@ -254,10 +283,13 @@ final class SessionCoordinator: ObservableObject {
         buttonsEnabled = true
         revealed = false
         revealedResponseMs = nil
+        resetVoiceCheckForNewCard()
+        if voiceCheckEligible { beginVoiceCheckListening() }
         demoStep()
     }
 
     private func finish() {
+        tearDownVoiceCheck()
         let duration = Date().timeIntervalSince(sessionStart)
         let stats = LearningService.SessionStats(mode: kind.modeLabel, cardsPlayed: cardsPlayed,
                                                   gotIt: gotItCount, almost: almostCount,
@@ -266,6 +298,154 @@ final class SessionCoordinator: ObservableObject {
         missedWords = missedSet.map { service.displayText(forID: $0) }.sorted()
         Feedback.fire(.sessionComplete)
         phase = .complete
+    }
+
+    // MARK: Voice-check (§6.8, On My Own only)
+
+    /// Structurally excludes every non-solo session (parent-scored, tricky) —
+    /// the toggle and permissions only ever matter here. Also folds in the
+    /// DEBUG mock's force-enable so screenshot runs don't need a real profile
+    /// edit first.
+    private var voiceCheckEligible: Bool {
+        guard kind == .solo else { return false }
+        #if DEBUG
+        if VoiceCheckService.isMockActive { return voiceCheck.isAvailable() }
+        #endif
+        return profile.voiceCheckOn && voiceCheck.isAvailable()
+    }
+
+    private func resetVoiceCheckForNewCard() {
+        voiceCheckSilenceTimer?.cancel(); voiceCheckSilenceTimer = nil
+        voiceCheck.stopListening()
+        voiceCheckTries = 0
+        voiceCheckUIState = .hidden
+        voiceCheckCardToken = UUID()
+    }
+
+    /// Stops any in-flight listening/timer and hides the overlay — called on
+    /// card end (any score), reveal, and session exit (§6.8).
+    private func stopVoiceCheck() {
+        voiceCheckSilenceTimer?.cancel(); voiceCheckSilenceTimer = nil
+        voiceCheck.stopListening()
+        voiceCheckUIState = .hidden
+    }
+
+    /// Public teardown for the view layer (`.onDisappear`) so a mid-session
+    /// exit via the X button always releases the mic + restores `.ambient`.
+    func tearDownVoiceCheck() { stopVoiceCheck() }
+
+    private func beginVoiceCheckListening() {
+        voiceCheckUIState = .listening
+        let token = voiceCheckCardToken
+        let target = currentWord
+        voiceCheck.startListening(target: target) { [weak self] heard, confidence, isFinal in
+            self?.handleVoiceTranscript(heard, confidence: confidence, isFinal: isFinal, token: token)
+        }
+        armVoiceCheckSilencePrompt(token: token)
+    }
+
+    /// ~6s of silence -> gentle spoken nudge, still listening passively (§6.8).
+    private func armVoiceCheckSilencePrompt(token: UUID) {
+        let item = DispatchWorkItem { [weak self] in
+            guard let self, self.voiceCheckCardToken == token,
+                  case .listening = self.voiceCheckUIState else { return }
+            self.speech.speak(line: "Give it a try, or tap Show answer.")
+        }
+        voiceCheckSilenceTimer = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6.0, execute: item)
+    }
+
+    /// Tokenizes the transcript and applies the match rules from §6.8:
+    /// confident (exact/homophone + decent confidence or final) -> auto score;
+    /// near-miss (low confidence match, or last token within edit distance 1-2
+    /// for words >=4 letters) -> confirmation state; otherwise keep listening.
+    /// Never auto-scores `.notYet` — silence/mismatch only ever falls back to
+    /// the manual controls.
+    private func handleVoiceTranscript(_ heard: String, confidence: Float, isFinal: Bool, token: UUID) {
+        guard token == voiceCheckCardToken, case .card = phase, buttonsEnabled else { return }
+        guard case .listening = voiceCheckUIState else { return }   // ignore late callbacks once confirming
+        let tokens = heard.lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty }
+        guard let lastToken = tokens.last else { return }
+        let target = currentWord.lowercased()
+
+        let confidentMatch = tokens.contains { Self.homophones.matches(heard: $0, target: target) }
+        if confidentMatch {
+            if isFinal || confidence >= 0.5 {
+                acceptVoiceMatch()
+            }
+            return   // heard but not yet confident/final — wait for more
+        }
+        if target.count >= 4, (1...2).contains(Self.levenshtein(lastToken, target)) {
+            handleVoiceNearMiss(heard: lastToken)
+        }
+        // Otherwise: no match yet, keep listening — never auto-scores wrong.
+    }
+
+    /// Up to 2 total confirmation attempts (§6.8); the 3rd near-miss falls back
+    /// to passive listening + the gentle prompt instead of asking again.
+    private func handleVoiceNearMiss(heard: String) {
+        voiceCheckTries += 1
+        voiceCheck.stopListening()
+        if voiceCheckTries > 2 {
+            voiceCheckUIState = .listening
+            speech.speak(line: "Give it a try, or tap Show answer.")
+            let token = voiceCheckCardToken
+            voiceCheck.startListening(target: currentWord) { [weak self] h, c, f in
+                self?.handleVoiceTranscript(h, confidence: c, isFinal: f, token: token)
+            }
+        } else {
+            voiceCheckUIState = .confirming(heard: heard)
+        }
+    }
+
+    /// "Yes" on the confirmation bar (§6.8).
+    func voiceCheckConfirmYes() {
+        guard case .confirming = voiceCheckUIState else { return }
+        acceptVoiceMatch()
+    }
+
+    /// "Try again" on the confirmation bar: relistens for the same card.
+    func voiceCheckTryAgain() {
+        guard case .confirming = voiceCheckUIState else { return }
+        voiceCheckUIState = .listening
+        let token = voiceCheckCardToken
+        voiceCheck.startListening(target: currentWord) { [weak self] h, c, f in
+            self?.handleVoiceTranscript(h, confidence: c, isFinal: f, token: token)
+        }
+        armVoiceCheckSilencePrompt(token: token)
+    }
+
+    /// A confident voice match (or a confirmed near-miss) auto-scores `.gotIt`
+    /// with the response time measured word-appear -> match, per §6.8. Reuses
+    /// the normal solo-mode scoring path by first marking the card "revealed"
+    /// with that captured time, exactly as a manual Show-answer tap would.
+    private func acceptVoiceMatch() {
+        guard case .card = phase, buttonsEnabled else { return }
+        if !revealed {
+            revealed = true
+            revealedResponseMs = max(0, Int(Date().timeIntervalSince(cardAppearedAt) * 1000))
+        }
+        score(.gotIt)
+    }
+
+    private static func levenshtein(_ a: String, _ b: String) -> Int {
+        let aChars = Array(a), bChars = Array(b)
+        let (m, n) = (aChars.count, bChars.count)
+        if m == 0 { return n }
+        if n == 0 { return m }
+        var dp = [[Int]](repeating: [Int](repeating: 0, count: n + 1), count: m + 1)
+        for i in 0...m { dp[i][0] = i }
+        for j in 0...n { dp[0][j] = j }
+        for i in 1...m {
+            for j in 1...n {
+                dp[i][j] = aChars[i - 1] == bChars[j - 1]
+                    ? dp[i - 1][j - 1]
+                    : 1 + min(dp[i - 1][j - 1], dp[i - 1][j], dp[i][j - 1])
+            }
+        }
+        return dp[m][n]
     }
 
     // MARK: Debug / screenshot hooks

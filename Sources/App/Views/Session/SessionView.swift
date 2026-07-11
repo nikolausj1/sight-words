@@ -23,6 +23,9 @@ struct SessionView: View {
             applyDemoArgsIfNeeded()
             coordinator.start()
         }
+        // Mid-session exit (X button dismiss, or the parent swiping the sheet
+        // away) must always release the mic and restore `.ambient` (§6.8).
+        .onDisappear { coordinator.tearDownVoiceCheck() }
     }
 
     @ViewBuilder
