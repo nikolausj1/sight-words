@@ -15,6 +15,7 @@ enum PhraseClip {
     case giveItATry
     case tapBlueButton
     case readOutLoud
+    case wasThatIt
 
     var slug: String {
         switch self {
@@ -27,6 +28,7 @@ enum PhraseClip {
         case .giveItATry: return "give-it-a-try"
         case .tapBlueButton: return "tap-blue-button"
         case .readOutLoud: return "read-out-loud"
+        case .wasThatIt: return "was-that-it"
         }
     }
 
@@ -41,6 +43,7 @@ enum PhraseClip {
         case .giveItATry: return "Give it a try, or tap Show answer."
         case .tapBlueButton: return "Tap the blue button to hear it."
         case .readOutLoud: return "Read each word out loud!"
+        case .wasThatIt: return "Was that it? Tap the green check — or try again!"
         }
     }
 }
@@ -99,14 +102,26 @@ final class SpeechService: NSObject {
         }
     }
 
-    /// Speaks a full line (feedback phrases, sentences) — always AVSpeech.
-    /// Sentences and any other free-form line stay on this path deliberately
-    /// (PRD open question) — only the fixed phrase script goes through
-    /// `speak(segments:)`.
+    /// Speaks a full line — always AVSpeech. The escape hatch for genuinely
+    /// dynamic text; everything with a bundled clip should prefer
+    /// `speakWord`/`speakSentence`/`speak(segments:)`.
     func speak(line: String) {
         prepareSession()
         playbackQueue = []
         speakText(line)
+    }
+
+    /// Speaks a word's example sentence: bundled clip (`sentence-<word>.m4a`)
+    /// if present, AVSpeech reading of `text` otherwise (custom words have no
+    /// sentence clip).
+    func speakSentence(forWord word: String, text: String) {
+        prepareSession()
+        playbackQueue = []
+        if let url = Bundle.main.url(forResource: "sentence-\(word.lowercased())", withExtension: "m4a") {
+            playClip(url: url, fallbackText: text)
+        } else {
+            speakText(text)
+        }
     }
 
     /// Speaks a composed line made of words/phrases (+ pauses). All-or-nothing:
@@ -196,10 +211,21 @@ final class SpeechService: NSObject {
         player.play()
     }
 
+    /// Best installed en-US voice, chosen once: premium > enhanced > default.
+    /// The compact default is noticeably robotic; if Justin downloads a
+    /// premium voice on a device (Settings > Accessibility > Spoken Content >
+    /// Voices), the fallback path picks it up automatically on next launch.
+    private static let fallbackVoice: AVSpeechSynthesisVoice? = {
+        let enUS = AVSpeechSynthesisVoice.speechVoices().filter { $0.language == "en-US" }
+        return enUS.first { $0.quality == .premium }
+            ?? enUS.first { $0.quality == .enhanced }
+            ?? AVSpeechSynthesisVoice(language: "en-US")
+    }()
+
     private func speakText(_ text: String) {
         guard !text.isEmpty else { return }
         let utterance = AVSpeechUtterance(string: text)
-        utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
+        utterance.voice = Self.fallbackVoice
         utterance.rate = 0.45
         synth.speak(utterance)
     }

@@ -306,7 +306,7 @@ final class SessionCoordinator: ObservableObject {
         try? await Task.sleep(nanoseconds: 1_500_000_000)
         reteachStep = 3
         if let sentence = service.sentence(for: snapshot.id) {
-            speech.speak(line: sentence)
+            speech.speakSentence(forWord: snapshot.id, text: sentence)
             try? await Task.sleep(nanoseconds: 2_000_000_000)
         }
         speech.speak(segments: [.phrase(.letsSeeAgain)])
@@ -357,7 +357,7 @@ final class SessionCoordinator: ObservableObject {
         try? await Task.sleep(nanoseconds: 3_000_000_000)
         if let sentence {
             sentenceRevealed = true
-            speech.speak(line: sentence)
+            speech.speakSentence(forWord: word, text: sentence)
             try? await Task.sleep(nanoseconds: 2_000_000_000)
             sentenceRevealed = false
         }
@@ -638,7 +638,9 @@ final class SessionCoordinator: ObservableObject {
             // Rule 4: deliberately does NOT stop listening — the mic stays
             // live right through confirmation, so a clean repeat just works.
             voiceCheckUIState = .confirming(heard: heard)
-            speech.speak(line: "I heard \(heard). Is that right?")
+            // Spoken part is a fixed Rachel clip (no robotic voice); the bar
+            // still SHOWS "I think you said '{heard}'" for a reading parent.
+            speech.speak(segments: [.phrase(.wasThatIt)])
         }
     }
 
