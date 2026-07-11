@@ -5,6 +5,8 @@ import SwiftUI
 struct PracticeCardView: View {
     @ObservedObject var coordinator: SessionCoordinator
     let onExit: () -> Void
+    @State private var showAnswerPulse = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: Theme.Metric.gap) {
@@ -23,18 +25,25 @@ struct PracticeCardView: View {
     // MARK: Voice-check overlay (§6.8) — solo sessions only, hidden entirely
     // when voice-check is off/unavailable (`voiceCheckUIState` stays `.hidden`).
 
+    /// Rule 4/5 (UX pass): the mic stays live through `.confirming` too (a
+    /// clean repeat auto-accepts without a tap), so the indicator shows for
+    /// both states — plus whenever a confident match just flashed green, even
+    /// in the instant before the state resets to `.hidden` on card advance.
     @ViewBuilder
     private var voiceCheckIndicator: some View {
-        if case .listening = coordinator.voiceCheckUIState {
-            PulsingMicIndicator()
+        if coordinator.voiceCheckUIState != .hidden || coordinator.micFlashCorrect {
+            PulsingMicIndicator(level: coordinator.micLevel, flashCorrect: coordinator.micFlashCorrect)
                 .padding(.trailing, 4)
                 .transition(.opacity)
         }
     }
 
     /// Compact darkPlate bar above the bottom buttons: "I think you said…" +
-    /// Yes / Try again. Manual Show-answer/self-score buttons stay visible and
-    /// functional underneath the whole time (§6.8: manual always overrides).
+    /// two BIG icon buttons (rule 1, UX pass) — a pre-reader can't reliably
+    /// read "Yes"/"Try again" text, so the buttons are icon-first; the text
+    /// stays for the parent looking over a shoulder. Manual Show-answer/
+    /// self-score buttons stay visible and functional underneath the whole
+    /// time (§6.8: manual always overrides).
     @ViewBuilder
     private var voiceCheckConfirmBar: some View {
         if case .confirming(let heard) = coordinator.voiceCheckUIState {
@@ -46,15 +55,21 @@ struct PracticeCardView: View {
                     .minimumScaleFactor(0.7)
                 Spacer(minLength: 8)
                 Button { coordinator.voiceCheckConfirmYes() } label: {
-                    Text("Yes").font(Theme.Font.label(15)).frame(width: 84, height: 44)
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 32, weight: .bold))
+                        .frame(width: 110, height: 72)
                 }
                 .buttonStyle(ChunkyKeyStyle(base: Theme.Color.correct,
-                                           deep: Theme.Color.correct.shaded(by: -0.35), corner: 12))
+                                           deep: Theme.Color.correct.shaded(by: -0.35), corner: 16))
+                .accessibilityLabel("Yes, I said it right")
                 Button { coordinator.voiceCheckTryAgain() } label: {
-                    Text("Try again").font(Theme.Font.label(15)).frame(width: 116, height: 44)
+                    Image(systemName: "arrow.circlepath")
+                        .font(.system(size: 32, weight: .bold))
+                        .frame(width: 110, height: 72)
                 }
-                .buttonStyle(ChunkyKeyStyle(base: Theme.Color.gentle,
-                                           deep: Theme.Color.gentle.shaded(by: -0.35), corner: 12))
+                .buttonStyle(ChunkyKeyStyle(base: Theme.Color.accent,
+                                           deep: Theme.Color.accent.shaded(by: -0.35), corner: 16))
+                .accessibilityLabel("Try again")
             }
             .padding(.horizontal, 18).padding(.vertical, 10)
             .darkPlate(corner: 16)
@@ -176,9 +191,33 @@ struct PracticeCardView: View {
                 }
                 .buttonStyle(ChunkyKeyStyle(base: Theme.Color.primary, deep: Theme.Color.primary.shaded(by: -0.35)))
                 .disabled(!coordinator.buttonsEnabled)
-                .opacity(coordinator.buttonsEnabled ? 1 : 0.5)
+                .opacity(showAnswerOpacity)
+                .scaleEffect(showAnswerScale)
+                .onChange(of: coordinator.nudgeShowAnswer) { _, active in
+                    if active {
+                        withAnimation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true)) {
+                            showAnswerPulse = true
+                        }
+                    } else {
+                        withAnimation(Theme.Motion.quick) { showAnswerPulse = false }
+                    }
+                }
             }
         }
+    }
+
+    /// Rule 6 (UX pass): after two silence windows with no attempt, the
+    /// Show-answer button gets a gentle repeating pulse — an obvious next
+    /// step for a pre-reader alone, instead of waiting indefinitely. Scale
+    /// under normal motion; opacity-only under Reduce Motion.
+    private var showAnswerScale: CGFloat {
+        guard !reduceMotion else { return 1.0 }
+        return showAnswerPulse ? 1.05 : 1.0
+    }
+    private var showAnswerOpacity: Double {
+        let base = coordinator.buttonsEnabled ? 1.0 : 0.5
+        guard reduceMotion else { return base }
+        return showAnswerPulse ? base * 0.7 : base
     }
 
     private func scoreButton(title: String, systemImage: String, base: Color,
@@ -223,12 +262,36 @@ struct ProgressStrip: View {
     }
 }
 
-/// Small pulsing mic indicator (§6.8): darkPlate + `mic.fill`, a gentle scale
-/// pulse while voice-check is actively listening. Purely decorative — no tap
-/// target; manual controls are the only interactive path.
+/// Small pulsing mic indicator (§6.8, rule 5 of the UX pass): darkPlate +
+/// `mic.fill`, rendered so its scale/brightness follows the live `level`
+/// (0-1, streamed from `VoiceCheckService`'s audio tap or mock) instead of a
+/// fixed timer pulse. A subtle idle pulse is layered on top as a floor so it
+/// never looks frozen even at silence, and on a confident match the plate
+/// flashes correct-green for a beat (`flashCorrect`) before the card advances.
+/// Reduce Motion: level/idle are conveyed via opacity instead of scale.
+/// Purely decorative — no tap target; manual controls are the only
+/// interactive path.
 struct PulsingMicIndicator: View {
-    @State private var pulse = false
+    var level: Float = 0
+    var flashCorrect: Bool = false
+    @State private var idlePulse = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var clampedLevel: CGFloat { CGFloat(min(max(level, 0), 1)) }
+
+    private var scale: CGFloat {
+        guard !reduceMotion else { return 1.0 }
+        let levelScale = 1.0 + clampedLevel * 0.32
+        let idleFloor: CGFloat = idlePulse ? 1.05 : 1.0
+        return max(levelScale, idleFloor)
+    }
+
+    private var plateOpacity: Double {
+        guard reduceMotion else { return 1.0 }
+        let base = 0.55 + Double(clampedLevel) * 0.35
+        let idleFloor: Double = idlePulse ? 0.1 : 0
+        return min(1, base + idleFloor)
+    }
 
     var body: some View {
         Image(systemName: "mic.fill")
@@ -236,13 +299,21 @@ struct PulsingMicIndicator: View {
             .foregroundStyle(.white)
             .frame(width: 44, height: 44)
             .darkPlate(corner: 14)
-            .scaleEffect(pulse ? 1.12 : 1.0)
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Theme.Color.correct)
+                    .opacity(flashCorrect ? 0.88 : 0)
+                    .allowsHitTesting(false)
+            )
+            .scaleEffect(scale)
+            .opacity(plateOpacity)
+            .animation(Theme.Motion.quick, value: level)
+            .animation(Theme.Motion.snappy, value: flashCorrect)
             .onAppear {
-                guard !reduceMotion else { return }
                 withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
-                    pulse = true
+                    idlePulse = true
                 }
             }
-            .accessibilityLabel("Listening")
+            .accessibilityLabel(flashCorrect ? "Heard you!" : "Listening")
     }
 }

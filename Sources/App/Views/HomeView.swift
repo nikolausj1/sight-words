@@ -114,7 +114,8 @@ struct HomeView: View {
             || args.contains("-demoComplete") || args.contains("-demoSentence") {
             showSession = true
         } else if args.contains("-demoSolo") || args.contains("-demoSoloAnswer")
-            || args.contains("-mockVoiceCheck") || args.contains("-mockVoiceCheckConfirm") {
+            || args.contains("-mockVoiceCheck") || args.contains("-mockVoiceCheckConfirm")
+            || args.contains("-mockVoiceCheckConfirmRepeat") || args.contains("-mockVoiceCheckNudge") {
             // The voice-check mock args (§6.8) imply a solo session — that's
             // the only mode the overlay can appear in.
             showSolo = true

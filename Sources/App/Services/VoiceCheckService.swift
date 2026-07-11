@@ -21,8 +21,16 @@ final class VoiceCheckService {
     private var task: SFSpeechRecognitionTask?
     private var recordingSessionActive = false
 
+    /// Smoothed 0-1 mic level, streamed to whoever's currently listening
+    /// (`SessionCoordinator.micLevel`), throttled to ~10Hz — see `reportLevel`.
+    private var onLevel: ((Float) -> Void)?
+    private var smoothedLevel: Float = 0
+    private var lastLevelReportAt: Date = .distantPast
+
     #if DEBUG
     private var mockWorkItem: DispatchWorkItem?
+    private var mockFollowUpWorkItem: DispatchWorkItem?
+    private var mockLevelTimer: DispatchSourceTimer?
     #endif
 
     private(set) var isListening = false
@@ -75,14 +83,17 @@ final class VoiceCheckService {
     /// match/homophone/near-miss logic lives in the caller (`SessionCoordinator`)
     /// — this service only streams raw recognizer output.
     func startListening(target: String,
-                         onTranscript: @escaping (_ text: String, _ confidence: Float, _ isFinal: Bool) -> Void) {
+                         onTranscript: @escaping (_ text: String, _ confidence: Float, _ isFinal: Bool) -> Void,
+                         onLevel: @escaping (_ level: Float) -> Void = { _ in }) {
         #if DEBUG
         if Self.isMockActive {
+            self.onLevel = onLevel
             startMockListening(target: target, onTranscript: onTranscript)
             return
         }
         #endif
         stopListening()
+        self.onLevel = onLevel
         guard let recognizer, recognizer.isAvailable else { return }
 
         do { try activateRecordingSession() } catch { return }
@@ -95,8 +106,10 @@ final class VoiceCheckService {
         let input = audioEngine.inputNode
         let format = input.outputFormat(forBus: 0)
         input.removeTap(onBus: 0)
-        input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
+        input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
             req.append(buffer)
+            let level = Self.rmsLevel(of: buffer)
+            Task { @MainActor in self?.reportLevel(level) }
         }
         audioEngine.prepare()
         do {
@@ -132,7 +145,11 @@ final class VoiceCheckService {
     func stopListening() {
         #if DEBUG
         mockWorkItem?.cancel(); mockWorkItem = nil
+        mockFollowUpWorkItem?.cancel(); mockFollowUpWorkItem = nil
+        mockLevelTimer?.cancel(); mockLevelTimer = nil
         #endif
+        smoothedLevel = 0
+        onLevel = nil
         guard isListening || audioEngine.isRunning || recordingSessionActive else { return }
         if audioEngine.isRunning { audioEngine.stop() }
         audioEngine.inputNode.removeTap(onBus: 0)
@@ -142,6 +159,29 @@ final class VoiceCheckService {
         request = nil
         isListening = false
         deactivateRecordingSession()
+    }
+
+    /// Smooths + throttles raw per-buffer RMS to ~10Hz before handing it to the
+    /// coordinator — the audio tap fires far faster than the UI needs to redraw.
+    private func reportLevel(_ raw: Float) {
+        let now = Date()
+        guard now.timeIntervalSince(lastLevelReportAt) >= 0.1 else { return }
+        lastLevelReportAt = now
+        smoothedLevel = smoothedLevel * 0.6 + raw * 0.4
+        onLevel?(smoothedLevel)
+    }
+
+    /// Rough 0-1 loudness estimate from one PCM buffer. Not calibrated to any
+    /// spec — just needs to move plausibly with voice, for the pulsing-mic UI.
+    private nonisolated static func rmsLevel(of buffer: AVAudioPCMBuffer) -> Float {
+        guard let channelData = buffer.floatChannelData else { return 0 }
+        let frameLength = Int(buffer.frameLength)
+        guard frameLength > 0 else { return 0 }
+        let samples = channelData[0]
+        var sum: Float = 0
+        for i in 0..<frameLength { let s = samples[i]; sum += s * s }
+        let rms = sqrt(sum / Float(frameLength))
+        return min(max(rms * 8, 0), 1)
     }
 
     // MARK: Audio session coordination
@@ -169,26 +209,41 @@ final class VoiceCheckService {
     // MARK: DEBUG mock (sim can't do on-device recognition — §6.8/Phase 5 note)
 
     #if DEBUG
-    /// True when either mock launch arg is present. `SessionCoordinator` also
+    /// True when any mock launch arg is present. `SessionCoordinator` also
     /// checks this to force `voiceCheckOn` for the session regardless of the
     /// profile's real setting, so the overlay's states are reachable in sim
     /// without hand-editing profile data first.
     static var isMockActive: Bool {
         let args = ProcessInfo.processInfo.arguments
         return args.contains("-mockVoiceCheck") || args.contains("-mockVoiceCheckConfirm")
+            || args.contains("-mockVoiceCheckConfirmRepeat") || args.contains("-mockVoiceCheckNudge")
     }
 
-    /// Fakes the recognition pipeline: ~2.5s after the card appears, injects one
-    /// transcript and never taps the real recognizer/audio engine at all.
-    /// `-mockVoiceCheckConfirm` appends "s" to the target (Levenshtein distance
-    /// 1) so the confirmation bar is reachable; `-mockVoiceCheck heard=<word>`
-    /// injects an arbitrary word (pass the target itself for a confident match).
+    /// Fakes the recognition pipeline and never taps the real recognizer/audio
+    /// engine at all. Always streams a plausible oscillating `onLevel` while
+    /// "listening" (ux2 mic-level screenshot; rule 5), same as the real tap.
+    /// Transcript behavior depends on the launch arg:
+    /// - `-mockVoiceCheckConfirm`: ~2.5s in, appends "s" to the target
+    ///   (Levenshtein distance 1) so the confirmation bar is reachable.
+    /// - `-mockVoiceCheckConfirmRepeat`: same near-miss at ~2.5s, then a clean
+    ///   repeat of the target itself at ~5s — exercises rule 4 (confident
+    ///   match accepted while the confirm bar is still showing, mic never
+    ///   stopped in between).
+    /// - `-mockVoiceCheckNudge`: never emits a transcript at all, so both
+    ///   silence timers (rule 6) get to fire; pair with the coordinator's
+    ///   compressed nudge delays for screenshotting.
+    /// - `-mockVoiceCheck heard=<word>`: injects an arbitrary word once
+    ///   (pass the target itself for a confident match).
     private func startMockListening(target: String,
                                     onTranscript: @escaping (String, Float, Bool) -> Void) {
         isListening = true
+        mockWorkItem?.cancel(); mockFollowUpWorkItem?.cancel()
+        startMockLevelOscillation()
         let args = ProcessInfo.processInfo.arguments
+        guard !args.contains("-mockVoiceCheckNudge") else { return }
+
         let heard: String
-        if args.contains("-mockVoiceCheckConfirm") {
+        if args.contains("-mockVoiceCheckConfirm") || args.contains("-mockVoiceCheckConfirmRepeat") {
             heard = target + "s"
         } else if let pair = args.first(where: { $0.hasPrefix("heard=") }) {
             heard = String(pair.dropFirst("heard=".count))
@@ -201,6 +256,42 @@ final class VoiceCheckService {
         }
         mockWorkItem = item
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5, execute: item)
+
+        if args.contains("-mockVoiceCheckConfirmRepeat") {
+            // Re-emit the clean repeat every 3s (like a real kid repeating the
+            // word) — a single shot can land inside the self-hearing guard's
+            // window around the spoken "I heard …" question and vanish.
+            scheduleMockRepeat(target: target, attempt: 0, onTranscript: onTranscript)
+        }
+    }
+
+    private func scheduleMockRepeat(target: String, attempt: Int,
+                                    onTranscript: @escaping (String, Float, Bool) -> Void) {
+        guard attempt < 5 else { return }
+        let followUp = DispatchWorkItem { [weak self] in
+            guard let self, self.isListening else { return }
+            onTranscript(target, 0.9, true)
+            self.scheduleMockRepeat(target: target, attempt: attempt + 1, onTranscript: onTranscript)
+        }
+        mockFollowUpWorkItem = followUp
+        DispatchQueue.main.asyncAfter(deadline: .now() + (attempt == 0 ? 5.0 : 3.0), execute: followUp)
+    }
+
+    /// Oscillates `onLevel` at ~10Hz while the mock is "listening", so
+    /// `PulsingMicIndicator` has something plausible to render (rule 5).
+    private func startMockLevelOscillation() {
+        mockLevelTimer?.cancel()
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        var tick = 0
+        timer.schedule(deadline: .now(), repeating: 0.1)
+        timer.setEventHandler { [weak self] in
+            guard let self, self.isListening else { return }
+            tick += 1
+            let level = Float(0.5 + 0.45 * sin(Double(tick) * 0.5))
+            self.onLevel?(max(0, min(1, level)))
+        }
+        mockLevelTimer = timer
+        timer.resume()
     }
     #endif
 }

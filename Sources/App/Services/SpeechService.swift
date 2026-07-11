@@ -13,6 +13,8 @@ enum PhraseClip {
     case letsSeeAgain
     case niceWork
     case giveItATry
+    case tapBlueButton
+    case readOutLoud
 
     var slug: String {
         switch self {
@@ -23,6 +25,8 @@ enum PhraseClip {
         case .letsSeeAgain: return "lets-see-again"
         case .niceWork: return "nice-work"
         case .giveItATry: return "give-it-a-try"
+        case .tapBlueButton: return "tap-blue-button"
+        case .readOutLoud: return "read-out-loud"
         }
     }
 
@@ -35,6 +39,8 @@ enum PhraseClip {
         case .letsSeeAgain: return "Let's see it again soon."
         case .niceWork: return "Nice work!"
         case .giveItATry: return "Give it a try, or tap Show answer."
+        case .tapBlueButton: return "Tap the blue button to hear it."
+        case .readOutLoud: return "Read each word out loud!"
         }
     }
 }
@@ -66,6 +72,14 @@ final class SpeechService: NSObject {
 
     /// Remaining steps of an in-flight all-clips `speak(segments:)` chain.
     private var playbackQueue: [PlaybackStep] = []
+
+    /// True while the teacher voice is audible (clip, chain, or AVSpeech).
+    /// Voice-check drops transcripts while this is true — with no echo
+    /// cancellation on the plain input tap, the mic can hear the iPad's own
+    /// speaker and would otherwise score the app's voice as the child's.
+    var isSpeakingAloud: Bool {
+        synth.isSpeaking || clipPlayer?.isPlaying == true || !playbackQueue.isEmpty
+    }
 
     private enum PlaybackStep {
         case clip(URL)

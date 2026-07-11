@@ -183,8 +183,11 @@ Behavior per card:
 
 - A small pulsing mic indicator (darkPlate) shows it's listening. It waits for him to start speaking; listening window ~6s of silence before it gently prompts: "Give it a try, or tap Show answer."
 - **Confident match** (transcript token equals the target, case-insensitive, or is in the target's homophone set — e.g. to/two/too, there/their, for/four, know/no, right/write, by/buy, one/won, ate/eight, blue/blew, red/read, be/bee, see/sea, new/knew, so/sew, our/hour, its/it's, would/wood, hi/high): scored correct — "Correct. {word}."
-- **Low confidence or near-miss:** "I think you said '{heard}'. Is that right?" → **Yes** (scored correct) / **Try again** (relisten). Never auto-scored wrong.
-- **No match after 2 tries or no speech:** falls back to Show answer + self-score. Recognition failure is never recorded as an incorrect answer.
+- **Low confidence or near-miss:** the app SPEAKS "I heard '{heard}'. Is that right?" and shows the question with two big icon buttons (green ✓ = yes / gold ↻ = try again) — the child is a pre-reader, so nothing in this flow may depend on reading (v1.1 UX pass). The mic stays live through confirmation: a clean repeat of the word auto-accepts with no tap. Never auto-scored wrong.
+- **Short words** (≤3 letters): a match only counts from an utterance of at most two tokens ending in the word — chatter like "I don't know" can never auto-score "I" — and 2–3-letter words get single-token edit-distance-1 near-miss handling (v1.1).
+- **Self-hearing guard:** transcripts heard while the teacher voice is playing (or within ~1s after) are discarded — the mic has no echo cancellation and would otherwise score the iPad's own speaker output (v1.1).
+- **No match after 2 confirmation prompts or no speech:** falls back to Show answer + self-score. Recognition failure is never recorded as an incorrect answer. After a second silence window (~6s + ~8s), the app says "Tap the blue button to hear it" and pulses the Show answer button.
+- **Feedback:** the mic indicator's pulse follows the live input level, and flashes green on an accepted match. Solo sessions with voice-check on open with a one-time spoken "Read each word out loud!" (v1.1).
 - Manual buttons always override anything voice-check concluded.
 
 **Permission denied:** the settings toggle shows "Microphone access is off — enable it in the Settings app" with a deep link; sessions behave as if voice-check were off. **Recognizer unavailable** (unsupported device/locale): toggle disabled with a one-line explanation.
