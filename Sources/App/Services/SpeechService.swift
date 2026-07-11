@@ -1,23 +1,84 @@
 import Foundation
 import AVFoundation
 
-/// The teacher voice: speaks words and lines aloud. `speakWord` checks for a
-/// bundled clip first (`words/<text>.m4a`, Phase 6 — none exist yet, so this
-/// path never fires today) and falls back to AVSpeechSynthesizer. Speech always
-/// plays; `profile.soundOn` gates SFX only (`Feedback.fire`), never the teacher
-/// voice. `.ambient` session, coordinated with `Feedback`'s own setup.
+/// The 7 fixed feedback phrases that get bundled ElevenLabs clips
+/// (`phrase-<slug>.m4a`, flat in the bundle root). Each phrase also knows its
+/// spoken-text fallback, used both for a solo AVSpeech utterance of that
+/// phrase and for composing the full fallback line in `speak(segments:)`.
+enum PhraseClip {
+    case correct
+    case thisWordIs
+    case say
+    case goodSeeAgain
+    case letsSeeAgain
+    case niceWork
+    case giveItATry
+
+    var slug: String {
+        switch self {
+        case .correct: return "correct"
+        case .thisWordIs: return "this-word-is"
+        case .say: return "say"
+        case .goodSeeAgain: return "good-see-again"
+        case .letsSeeAgain: return "lets-see-again"
+        case .niceWork: return "nice-work"
+        case .giveItATry: return "give-it-a-try"
+        }
+    }
+
+    var fallbackText: String {
+        switch self {
+        case .correct: return "Correct."
+        case .thisWordIs: return "This word is"
+        case .say: return "Say"
+        case .goodSeeAgain: return "Good. We'll see it again soon."
+        case .letsSeeAgain: return "Let's see it again soon."
+        case .niceWork: return "Nice work!"
+        case .giveItATry: return "Give it a try, or tap Show answer."
+        }
+    }
+}
+
+/// One beat of a spoken line: a Dolch word, one of the fixed feedback
+/// phrases, or a silent gap between beats (honored only on the all-clips
+/// path — see `speak(segments:)`).
+enum SpeechSegment {
+    case word(String)
+    case phrase(PhraseClip)
+    case pause(TimeInterval)
+}
+
+/// The teacher voice: speaks words and lines aloud. Bundled ElevenLabs clips
+/// are looked up flat in the bundle root (`word-<text>.m4a`,
+/// `phrase-<slug>.m4a`); AVSpeechSynthesizer is the fallback whenever a clip
+/// isn't there (custom words never have one). Speech always plays;
+/// `profile.soundOn` gates SFX only (`Feedback.fire`), never the teacher
+/// voice. `.ambient` session, coordinated with `Feedback`'s own setup, and
+/// left alone the rest of the time so voice-check's temporary switch to
+/// `.playAndRecord` (`.mixWithOthers`) doesn't get stomped on mid-listen.
 @MainActor
-final class SpeechService {
+final class SpeechService: NSObject {
     static let shared = SpeechService()
 
     private let synth = AVSpeechSynthesizer()
     private var clipPlayer: AVAudioPlayer?
     private var sessionReady = false
 
+    /// Remaining steps of an in-flight all-clips `speak(segments:)` chain.
+    private var playbackQueue: [PlaybackStep] = []
+
+    private enum PlaybackStep {
+        case clip(URL)
+        case pause(TimeInterval)
+    }
+
     /// Speaks a single word: bundled clip if present, AVSpeech otherwise.
+    /// Custom words (not in the Dolch list) never have a clip, so this always
+    /// falls back to AVSpeech for them — same as before.
     func speakWord(_ text: String) {
         prepareSession()
-        if let url = clipURL(for: text) {
+        playbackQueue = []
+        if let url = clipURL(word: text) {
             playClip(url: url, fallbackText: text)
         } else {
             speakText(text)
@@ -25,13 +86,89 @@ final class SpeechService {
     }
 
     /// Speaks a full line (feedback phrases, sentences) — always AVSpeech.
+    /// Sentences and any other free-form line stay on this path deliberately
+    /// (PRD open question) — only the fixed phrase script goes through
+    /// `speak(segments:)`.
     func speak(line: String) {
         prepareSession()
+        playbackQueue = []
         speakText(line)
     }
 
-    private func clipURL(for text: String) -> URL? {
-        Bundle.main.url(forResource: "words/\(text.lowercased())", withExtension: "m4a")
+    /// Speaks a composed line made of words/phrases (+ pauses). All-or-nothing:
+    /// if every word/phrase segment has a bundled clip, plays them back-to-back
+    /// via chained `AVAudioPlayer`s, honoring `.pause` gaps in between. If even
+    /// one clip is missing, the whole line falls back to a single AVSpeech
+    /// utterance instead — mixing a recorded voice with the synthesized one
+    /// mid-line would be jarring, so it's all-clips or all-AVSpeech.
+    func speak(segments: [SpeechSegment]) {
+        prepareSession()
+        if let steps = playbackSteps(for: segments) {
+            playbackQueue = steps
+            advancePlaybackQueue()
+        } else {
+            playbackQueue = []
+            speakText(composedFallbackText(for: segments))
+        }
+    }
+
+    private func clipURL(word text: String) -> URL? {
+        Bundle.main.url(forResource: "word-\(text.lowercased())", withExtension: "m4a")
+    }
+
+    private func clipURL(phrase: PhraseClip) -> URL? {
+        Bundle.main.url(forResource: "phrase-\(phrase.slug)", withExtension: "m4a")
+    }
+
+    /// Returns the clip/pause steps for `segments`, or nil if any word/phrase
+    /// segment lacks a bundled clip (triggering the all-AVSpeech fallback).
+    private func playbackSteps(for segments: [SpeechSegment]) -> [PlaybackStep]? {
+        var steps: [PlaybackStep] = []
+        for segment in segments {
+            switch segment {
+            case .word(let text):
+                guard let url = clipURL(word: text) else { return nil }
+                steps.append(.clip(url))
+            case .phrase(let phrase):
+                guard let url = clipURL(phrase: phrase) else { return nil }
+                steps.append(.clip(url))
+            case .pause(let interval):
+                steps.append(.pause(interval))
+            }
+        }
+        return steps
+    }
+
+    /// Approximates the segment sequence as one natural sentence for the
+    /// AVSpeech fallback (e.g. `[.phrase(.thisWordIs), .word("cat"), .pause,
+    /// .phrase(.say), .word("cat")]` -> "This word is cat. Say cat.").
+    private func composedFallbackText(for segments: [SpeechSegment]) -> String {
+        segments.compactMap { segment -> String? in
+            switch segment {
+            case .word(let text): return "\(text)."
+            case .phrase(let phrase): return phrase.fallbackText
+            case .pause: return nil
+            }
+        }.joined(separator: " ")
+    }
+
+    private func advancePlaybackQueue() {
+        guard !playbackQueue.isEmpty else { clipPlayer = nil; return }
+        let step = playbackQueue.removeFirst()
+        switch step {
+        case .pause(let interval):
+            let item = DispatchWorkItem { [weak self] in self?.advancePlaybackQueue() }
+            DispatchQueue.main.asyncAfter(deadline: .now() + interval, execute: item)
+        case .clip(let url):
+            guard let player = try? AVAudioPlayer(contentsOf: url) else {
+                advancePlaybackQueue()   // shouldn't happen — steps() already confirmed the URL
+                return
+            }
+            player.delegate = self
+            clipPlayer = player
+            player.prepareToPlay()
+            player.play()
+        }
     }
 
     private func playClip(url: URL, fallbackText: String) {
@@ -39,6 +176,7 @@ final class SpeechService {
             speakText(fallbackText)
             return
         }
+        player.delegate = self
         clipPlayer = player
         player.prepareToPlay()
         player.play()
@@ -57,5 +195,16 @@ final class SpeechService {
         try? AVAudioSession.sharedInstance().setCategory(.ambient, mode: .default)
         try? AVAudioSession.sharedInstance().setActive(true)
         sessionReady = true
+    }
+}
+
+extension SpeechService: AVAudioPlayerDelegate {
+    /// Delegate callback arrives off the main thread; hop back to advance the
+    /// (MainActor-owned) playback queue, whether this clip was a lone
+    /// `speakWord`/`playClip` or one link in a `speak(segments:)` chain.
+    nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        Task { @MainActor in
+            self.advancePlaybackQueue()
+        }
     }
 }

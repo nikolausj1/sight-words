@@ -195,15 +195,15 @@ final class SessionCoordinator: ObservableObject {
     private func runFeedbackSpeech(result: ScoreResult, word: String) async {
         switch result {
         case .gotIt:
-            speech.speak(line: "Correct. \(word).")
+            speech.speak(segments: [.phrase(.correct), .pause(0.15), .word(word)])
             try? await Task.sleep(nanoseconds: 500_000_000)
         case .almost:
             speech.speakWord(word)
             try? await Task.sleep(nanoseconds: 500_000_000)
         case .notYet:
-            speech.speak(line: "This word is \(word). Say \(word).")
+            speech.speak(segments: [.phrase(.thisWordIs), .word(word), .pause(0.3), .phrase(.say), .word(word)])
             try? await Task.sleep(nanoseconds: 3_000_000_000)
-            speech.speak(line: "Good. We'll see it again soon.")
+            speech.speak(segments: [.phrase(.goodSeeAgain)])
             try? await Task.sleep(nanoseconds: 1_200_000_000)
         }
     }
@@ -213,7 +213,7 @@ final class SessionCoordinator: ObservableObject {
         speech.speakWord(word)
         try? await Task.sleep(nanoseconds: 900_000_000)
         reteachStep = 1
-        speech.speak(line: "Say \(word).")
+        speech.speak(segments: [.phrase(.say), .word(word)])
         try? await Task.sleep(nanoseconds: 3_000_000_000)
         reteachStep = 2
         speech.speakWord(word)
@@ -223,7 +223,7 @@ final class SessionCoordinator: ObservableObject {
             speech.speak(line: sentence)
             try? await Task.sleep(nanoseconds: 2_000_000_000)
         }
-        speech.speak(line: "Let's see it again soon.")
+        speech.speak(segments: [.phrase(.letsSeeAgain)])
         try? await Task.sleep(nanoseconds: 1_000_000_000)
     }
 
@@ -233,7 +233,7 @@ final class SessionCoordinator: ObservableObject {
         completedCount = newCompleted
         if completedCount > 0, completedCount % 5 == 0 {
             pulseTick += 1
-            speech.speak(line: "Nice work.")
+            speech.speak(segments: [.phrase(.niceWork)])
         }
     }
 
@@ -267,7 +267,7 @@ final class SessionCoordinator: ObservableObject {
     private func runIntro(word: String, sentence: String?) async {
         speech.speakWord(word)
         try? await Task.sleep(nanoseconds: 900_000_000)
-        speech.speak(line: "Say \(word).")
+        speech.speak(segments: [.phrase(.say), .word(word)])
         try? await Task.sleep(nanoseconds: 3_000_000_000)
         if let sentence {
             sentenceRevealed = true
@@ -349,7 +349,7 @@ final class SessionCoordinator: ObservableObject {
         let item = DispatchWorkItem { [weak self] in
             guard let self, self.voiceCheckCardToken == token,
                   case .listening = self.voiceCheckUIState else { return }
-            self.speech.speak(line: "Give it a try, or tap Show answer.")
+            self.speech.speak(segments: [.phrase(.giveItATry)])
         }
         voiceCheckSilenceTimer = item
         DispatchQueue.main.asyncAfter(deadline: .now() + 6.0, execute: item)
@@ -390,7 +390,7 @@ final class SessionCoordinator: ObservableObject {
         voiceCheck.stopListening()
         if voiceCheckTries > 2 {
             voiceCheckUIState = .listening
-            speech.speak(line: "Give it a try, or tap Show answer.")
+            speech.speak(segments: [.phrase(.giveItATry)])
             let token = voiceCheckCardToken
             voiceCheck.startListening(target: currentWord) { [weak self] h, c, f in
                 self?.handleVoiceTranscript(h, confidence: c, isFinal: f, token: token)
