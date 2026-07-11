@@ -371,6 +371,41 @@ do {
 }
 
 // =====================================================================
+// Fresh-profile floor: all-new pool must yield a 5-card intro session
+// =====================================================================
+do {
+    let now = dateAt(2026, 1, 1)
+    var rng: RandomNumberGenerator = SeededRNG(seed: 77)
+    let freshPool = (0..<92).map { WordSnapshot(id: "fresh\($0)") }
+    let intro = buildSession(pool: freshPool, size: 12, now: now, calendar: calendar, mode: .standard, rng: &rng)
+    check(intro.count == 5, "fresh profile: 12-card request over all-new pool yields 5-card intro session")
+    check(intro.allSatisfy { $0.state == .new }, "fresh profile: intro session is all new words")
+
+    var rng2: RandomNumberGenerator = SeededRNG(seed: 78)
+    let tinyNewPool = (0..<3).map { WordSnapshot(id: "tiny\($0)") }
+    let tiny = buildSession(pool: tinyNewPool, size: 12, now: now, calendar: calendar, mode: .standard, rng: &rng2)
+    check(tiny.count == 3, "fresh profile: pool smaller than floor returns whole pool")
+
+    // Rich pool must be unaffected by the floor (still 12 cards, still <= 2 new).
+    var rng3: RandomNumberGenerator = SeededRNG(seed: 79)
+    var richPool: [WordSnapshot] = (0..<40).map { i in
+        var w = WordSnapshot(id: "familiar\(i)")
+        w.state = .developing
+        w.dueDate = dateAt(2025, 12, 30)
+        return w
+    }
+    richPool += (0..<10).map { i in
+        var w = WordSnapshot(id: "learn\(i)")
+        w.state = .learning
+        return w
+    }
+    richPool += (0..<10).map { WordSnapshot(id: "new\($0)") }
+    let rich = buildSession(pool: richPool, size: 12, now: now, calendar: calendar, mode: .standard, rng: &rng3)
+    check(rich.count == 12, "rich pool: floor does not shrink or grow a full session")
+    check(rich.filter { $0.state == .new }.count <= 2, "rich pool: new-word cap still holds with floor in place")
+}
+
+// =====================================================================
 // Final tally
 // =====================================================================
 print("----")

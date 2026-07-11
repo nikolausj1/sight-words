@@ -138,5 +138,13 @@ public func buildSession(
         remaining = size - selected.count
     }
 
+    // Fresh-profile floor: with no familiar/learning words yet, the 2-new cap would
+    // produce a 2-card first session. An introduction session of up to 5 new words
+    // is the intended day-one experience, so the cap yields to a 5-card floor.
+    let floorCount = min(5, size)
+    if selected.count < floorCount {
+        take(&newBucket, floorCount - selected.count, isNewBucket: true)
+    }
+
     return selected
 }
