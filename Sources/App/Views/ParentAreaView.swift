@@ -13,10 +13,17 @@ import UIKit
 struct ParentAreaView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.horizontalSizeClass) private var hSizeClass
     @Query(sort: \Profile.createdAt) private var profiles: [Profile]
 
     private var service: LearningService { LearningService(context: context) }
     private var active: Profile? { profiles.first(where: { $0.isActive }) }
+
+    /// Compact (iPhone portrait): the two-column ~1180x850 card becomes a
+    /// full-screen single-column scroll (identity -> dashboard -> management
+    /// cards). Regular (iPad): the original centered two-column card,
+    /// pixel-for-pixel unchanged.
+    private var isCompact: Bool { hSizeClass == .compact }
 
     @State private var showGate = false
     @State private var pending: (() -> Void)?
@@ -54,13 +61,17 @@ struct ParentAreaView: View {
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.6)
-                .ignoresSafeArea()
-                .onTapGesture { dismiss() }
-            card
-                .frame(maxWidth: 1180, maxHeight: 850)
-                .padding(.horizontal, 40)
-                .padding(.vertical, 30)
+            if isCompact {
+                compactBody
+            } else {
+                Color.black.opacity(0.6)
+                    .ignoresSafeArea()
+                    .onTapGesture { dismiss() }
+                card
+                    .frame(maxWidth: 1180, maxHeight: 850)
+                    .padding(.horizontal, 40)
+                    .padding(.vertical, 30)
+            }
             if showGate { gateOverlay.zIndex(5) }
         }
         .presentationBackground(.clear)
@@ -166,34 +177,83 @@ struct ParentAreaView: View {
         .shadow(color: .black.opacity(0.5), radius: 30, y: 10)
     }
 
-    /// Who the dashboard is about: the active child's avatar, name, streak,
-    /// and words-known capsule.
-    private var identityHeader: some View {
-        HStack(spacing: 14) {
-            AvatarBadge(key: active?.avatarSymbol ?? AvatarCatalog.keys[0], size: 64)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(active?.name ?? "Reader")
-                    .font(Theme.Font.display(26)).foregroundStyle(Theme.Color.ink)
-                    .lineLimit(1).minimumScaleFactor(0.7)
+    /// Compact layout: no scrim/centered card — this IS the full screen.
+    /// Order per spec: identity header, dashboard, then the management cards
+    /// (Players, Word Lists, Settings, How it works).
+    private var compactBody: some View {
+        ZStack(alignment: .topLeading) {
+            Theme.Color.bg.ignoresSafeArea()
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: Theme.Metric.gap) {
+                    Text("Parent Area")
+                        .font(Theme.Font.display(24)).foregroundStyle(Theme.Color.ink)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                    identityHeader
+                    DashboardView(profile: active, service: service)
+                    profilesCard
+                    wordListsCard
+                    settingsCard
+                    howItWorksCard
+                }
+                .padding(.horizontal, Theme.Metric.pad)
+                .padding(.top, 64)
+                .padding(.bottom, Theme.Metric.pad)
             }
-            Spacer(minLength: 12)
-            statCapsule("flame.fill", "\(active?.streakDays ?? 0)-day streak",
-                        Color(red: 0.93, green: 0.42, blue: 0.13))
-            statCapsule("book.fill", "\(active.map { service.wordsKnownCount(for: $0) } ?? 0) words known",
-                        Theme.Color.correct)
+            ModalCloseButton { dismiss() }.padding(14)
         }
-        .padding(Theme.Metric.pad)
-        .frame(maxWidth: 720)
-        .cardSurface()
     }
 
-    private func statCapsule(_ icon: String, _ text: String, _ tint: Color) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: icon).font(.system(size: 13, weight: .semibold))
-            Text(text).font(Theme.Font.label(14))
+    /// Who the dashboard is about: the active child's avatar, name, streak,
+    /// and words-known capsule.
+    @ViewBuilder
+    private var identityHeader: some View {
+        if isCompact {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 12) {
+                    AvatarBadge(key: active?.avatarSymbol ?? AvatarCatalog.keys[0], size: 52)
+                    Text(active?.name ?? "Reader")
+                        .font(Theme.Font.display(22)).foregroundStyle(Theme.Color.ink)
+                        .lineLimit(1).minimumScaleFactor(0.7)
+                    Spacer(minLength: 0)
+                }
+                HStack(spacing: 8) {
+                    statCapsule("flame.fill", "\(active?.streakDays ?? 0)-day streak",
+                                Color(red: 0.93, green: 0.42, blue: 0.13), compact: true)
+                    statCapsule("book.fill", "\(active.map { service.wordsKnownCount(for: $0) } ?? 0) words known",
+                                Theme.Color.correct, compact: true)
+                }
+            }
+            .padding(Theme.Metric.pad)
+            .frame(maxWidth: .infinity)
+            .cardSurface()
+        } else {
+            HStack(spacing: 14) {
+                AvatarBadge(key: active?.avatarSymbol ?? AvatarCatalog.keys[0], size: 64)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(active?.name ?? "Reader")
+                        .font(Theme.Font.display(26)).foregroundStyle(Theme.Color.ink)
+                        .lineLimit(1).minimumScaleFactor(0.7)
+                }
+                Spacer(minLength: 12)
+                statCapsule("flame.fill", "\(active?.streakDays ?? 0)-day streak",
+                            Color(red: 0.93, green: 0.42, blue: 0.13))
+                statCapsule("book.fill", "\(active.map { service.wordsKnownCount(for: $0) } ?? 0) words known",
+                            Theme.Color.correct)
+            }
+            .padding(Theme.Metric.pad)
+            .frame(maxWidth: 720)
+            .cardSurface()
+        }
+    }
+
+    private func statCapsule(_ icon: String, _ text: String, _ tint: Color, compact: Bool = false) -> some View {
+        HStack(spacing: compact ? 4 : 6) {
+            Image(systemName: icon).font(.system(size: compact ? 11 : 13, weight: .semibold))
+            Text(text).font(Theme.Font.label(compact ? 12 : 14))
+                .lineLimit(1).minimumScaleFactor(0.85)
         }
         .foregroundStyle(tint)
-        .padding(.horizontal, 12).padding(.vertical, 8)
+        .padding(.horizontal, compact ? 9 : 12).padding(.vertical, compact ? 6 : 8)
         .background(tint.opacity(0.1), in: Capsule())
     }
 
@@ -317,12 +377,25 @@ struct ParentAreaView: View {
                 .textFieldStyle(.roundedBorder)
                 .frame(maxWidth: 280)
                 .onChange(of: addName) { _, new in if new.count > 12 { addName = String(new.prefix(12)) } }
-            AvatarCarousel(selected: $addAvatar, itemSize: 100)
-            HStack(spacing: 10) {
-                ForEach(levelOptions, id: \.code) { g in
-                    Button(g.label) { addLevel = g.code }
-                        .buttonStyle(.bordered)
-                        .tint(addLevel == g.code ? Theme.Color.primary : Theme.Color.gentle)
+            AvatarCarousel(selected: $addAvatar, itemSize: isCompact ? 84 : 100)
+            if isCompact {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(levelOptions, id: \.code) { g in
+                            Button(g.label) { addLevel = g.code }
+                                .buttonStyle(.bordered)
+                                .tint(addLevel == g.code ? Theme.Color.primary : Theme.Color.gentle)
+                        }
+                    }
+                    .padding(.horizontal, 2)
+                }
+            } else {
+                HStack(spacing: 10) {
+                    ForEach(levelOptions, id: \.code) { g in
+                        Button(g.label) { addLevel = g.code }
+                            .buttonStyle(.bordered)
+                            .tint(addLevel == g.code ? Theme.Color.primary : Theme.Color.gentle)
+                    }
                 }
             }
             HStack(spacing: 14) {
@@ -337,7 +410,7 @@ struct ParentAreaView: View {
             }
         }
         .padding(28)
-        .frame(minWidth: 420, minHeight: 420)
+        .frame(minWidth: isCompact ? nil : 420, minHeight: isCompact ? 380 : 420)
     }
 
     // MARK: Word lists (gated)
@@ -517,7 +590,7 @@ struct ParentAreaView: View {
             }
         }
         .padding(28)
-        .frame(minWidth: 460, minHeight: 460)
+        .frame(minWidth: isCompact ? nil : 460, minHeight: isCompact ? 420 : 460)
     }
 
     // MARK: Settings (gated)

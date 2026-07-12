@@ -7,6 +7,7 @@ import SwiftData
 /// needsReview/learning-only deck).
 struct HomeView: View {
     @Environment(\.modelContext) private var context
+    @Environment(\.horizontalSizeClass) private var hSizeClass
     @Query(sort: \Profile.createdAt) private var profiles: [Profile]
     @State private var showSession = false
     @State private var showSolo = false
@@ -41,24 +42,7 @@ struct HomeView: View {
             }
 
             VStack(spacing: Theme.Metric.gap) {
-                HStack(spacing: Theme.Metric.gap * 1.5) {
-                    modeButton(title: "Practice\nTogether", systemImage: "person.2.fill",
-                               base: Theme.Color.primary, enabled: hasActiveWords) {
-                        Feedback.fire(.keyTap)
-                        showSession = true
-                    }
-                    modeButton(title: "On My Own", systemImage: "person.fill",
-                               base: Theme.Color.correct, enabled: hasActiveWords) {
-                        Feedback.fire(.keyTap)
-                        showSolo = true
-                    }
-                    modeButton(title: trickyEnabled ? "Tricky\nWords" : "No tricky\nwords right now!",
-                               systemImage: "star.fill",
-                               base: Theme.Color.accent, enabled: trickyEnabled) {
-                        Feedback.fire(.keyTap)
-                        showTricky = true
-                    }
-                }
+                modeButtons
 
                 Text(statusLine)
                     .font(Theme.Font.body())
@@ -132,6 +116,11 @@ struct HomeView: View {
         #endif
     }
 
+    /// Compact (iPhone portrait): same chip/gear content at a smaller scale so
+    /// both corners clear the safe area on narrow widths. Regular (iPad):
+    /// untouched — exact original sizes.
+    private var isCompact: Bool { hSizeClass == .compact }
+
     private var topBar: some View {
         HStack {
             profileChip
@@ -144,14 +133,14 @@ struct HomeView: View {
         Button {
             withAnimation(.easeOut(duration: 0.2)) { showKidProfile = true }
         } label: {
-            HStack(spacing: 10) {
-                AvatarBadge(key: profile?.avatarSymbol ?? "avatar1", size: 40)
+            HStack(spacing: isCompact ? 8 : 10) {
+                AvatarBadge(key: profile?.avatarSymbol ?? "avatar1", size: isCompact ? 32 : 40)
                 Text(profile?.name ?? "Player 1")
-                    .font(Theme.Font.label(17))
+                    .font(Theme.Font.label(isCompact ? 15 : 17))
                     .foregroundStyle(Theme.Color.ink)
             }
-            .padding(.vertical, 8)
-            .padding(.horizontal, 14)
+            .padding(.vertical, isCompact ? 6 : 8)
+            .padding(.horizontal, isCompact ? 10 : 14)
         }
         .background(Theme.Color.surface)
         .clipShape(Capsule())
@@ -164,9 +153,9 @@ struct HomeView: View {
             showParent = true
         } label: {
             Image(systemName: "gearshape.fill")
-                .font(.system(size: 22, weight: .semibold))
+                .font(.system(size: isCompact ? 18 : 22, weight: .semibold))
                 .foregroundStyle(.white)
-                .frame(width: 44, height: 44)
+                .frame(width: isCompact ? 36 : 44, height: isCompact ? 36 : 44)
         }
         .darkPlate()
         .overlay {
@@ -176,6 +165,53 @@ struct HomeView: View {
             }
         }
         .buttonStyle(PopButtonStyle())
+    }
+
+    /// Regular (iPad): the original centered row of three big square keys,
+    /// pixel-for-pixel unchanged. Compact (iPhone portrait): the same three
+    /// keys stacked full-width so nothing clips off the side edges (was the
+    /// baseline overflow bug — see `_review/phone-baseline.png`).
+    @ViewBuilder
+    private var modeButtons: some View {
+        if isCompact {
+            VStack(spacing: Theme.Metric.gap) {
+                compactModeButton(title: "Practice Together", systemImage: "person.2.fill",
+                                  base: Theme.Color.primary, enabled: hasActiveWords) {
+                    Feedback.fire(.keyTap)
+                    showSession = true
+                }
+                compactModeButton(title: "On My Own", systemImage: "person.fill",
+                                  base: Theme.Color.correct, enabled: hasActiveWords) {
+                    Feedback.fire(.keyTap)
+                    showSolo = true
+                }
+                compactModeButton(title: trickyEnabled ? "Tricky Words" : "No tricky words right now!",
+                                  systemImage: "star.fill",
+                                  base: Theme.Color.accent, enabled: trickyEnabled) {
+                    Feedback.fire(.keyTap)
+                    showTricky = true
+                }
+            }
+        } else {
+            HStack(spacing: Theme.Metric.gap * 1.5) {
+                modeButton(title: "Practice\nTogether", systemImage: "person.2.fill",
+                           base: Theme.Color.primary, enabled: hasActiveWords) {
+                    Feedback.fire(.keyTap)
+                    showSession = true
+                }
+                modeButton(title: "On My Own", systemImage: "person.fill",
+                           base: Theme.Color.correct, enabled: hasActiveWords) {
+                    Feedback.fire(.keyTap)
+                    showSolo = true
+                }
+                modeButton(title: trickyEnabled ? "Tricky\nWords" : "No tricky\nwords right now!",
+                           systemImage: "star.fill",
+                           base: Theme.Color.accent, enabled: trickyEnabled) {
+                    Feedback.fire(.keyTap)
+                    showTricky = true
+                }
+            }
+        }
     }
 
     private func modeButton(title: String, systemImage: String, base: Color, enabled: Bool,
@@ -189,6 +225,34 @@ struct HomeView: View {
                     .multilineTextAlignment(.center)
             }
             .frame(width: 220, height: 180)
+        }
+        .buttonStyle(ChunkyKeyStyle(base: enabled ? base : Theme.Color.gentle,
+                                    deep: (enabled ? base : Theme.Color.gentle).shaded(by: -0.35),
+                                    corner: Theme.Metric.corner))
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.6)
+    }
+
+    /// Phone portrait mode key: full-width row (icon left, label right) at a
+    /// fixed ~92pt height instead of the iPad's centered square key — same
+    /// colors/icon/ChunkyKeyStyle so it reads as the same button, just reflowed.
+    private func compactModeButton(title: String, systemImage: String, base: Color, enabled: Bool,
+                                   action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 16) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 32, weight: .semibold))
+                    .frame(width: 40)
+                Text(title)
+                    .font(Theme.Font.label(19))
+                    .multilineTextAlignment(.leading)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.85)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 20)
+            .frame(maxWidth: .infinity)
+            .frame(height: 92)
         }
         .buttonStyle(ChunkyKeyStyle(base: enabled ? base : Theme.Color.gentle,
                                     deep: (enabled ? base : Theme.Color.gentle).shaded(by: -0.35),

@@ -8,6 +8,8 @@ struct SessionCompleteView: View {
     let onDone: () -> Void
 
     @State private var appeared = false
+    @Environment(\.horizontalSizeClass) private var hSizeClass
+    private var isCompact: Bool { hSizeClass == .compact }
 
     var body: some View {
         VStack(spacing: Theme.Metric.gap * 1.5) {
@@ -27,7 +29,7 @@ struct SessionCompleteView: View {
                     .font(Theme.Font.body(18))
                     .foregroundStyle(Theme.Color.inkSoft)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 60)
+                    .padding(.horizontal, isCompact ? 24 : 60)
             }
 
             Button(action: onDone) {

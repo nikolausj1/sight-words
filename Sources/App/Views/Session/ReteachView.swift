@@ -5,6 +5,8 @@ import SwiftUI
 /// again, then the sentence — all auto-paced by the coordinator's speech beats.
 struct ReteachView: View {
     @ObservedObject var coordinator: SessionCoordinator
+    @Environment(\.horizontalSizeClass) private var hSizeClass
+    private var isCompact: Bool { hSizeClass == .compact }
 
     private var spacedLetters: String {
         coordinator.currentWord.map(String.init).joined(separator: "  ")
@@ -30,7 +32,7 @@ struct ReteachView: View {
                     .font(Theme.Font.body(20))
                     .foregroundStyle(Theme.Color.inkSoft)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 60)
+                    .padding(.horizontal, isCompact ? 24 : 60)
                     .transition(.opacity)
             }
         }

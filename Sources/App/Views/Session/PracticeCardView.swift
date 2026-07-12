@@ -7,6 +7,8 @@ struct PracticeCardView: View {
     let onExit: () -> Void
     @State private var showAnswerPulse = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.horizontalSizeClass) private var hSizeClass
+    private var isCompact: Bool { hSizeClass == .compact }
 
     var body: some View {
         VStack(spacing: Theme.Metric.gap) {
@@ -38,7 +40,10 @@ struct PracticeCardView: View {
     private var voiceCheckIndicator: some View {
         if !coordinator.holdModeActive, coordinator.voiceCheckUIState != .hidden || coordinator.micFlashCorrect {
             PulsingMicIndicator(level: coordinator.micLevel, flashCorrect: coordinator.micFlashCorrect)
-                .padding(.trailing, 4)
+                // Compact: portrait iPhones have zero horizontal safe-area
+                // inset, so 4pt lets the plate clip off the screen edge
+                // (its idle pulse scales it up 5%); give it real margin.
+                .padding(.trailing, isCompact ? 16 : 4)
                 .transition(.opacity)
         }
     }
@@ -52,33 +57,61 @@ struct PracticeCardView: View {
     @ViewBuilder
     private var voiceCheckConfirmBar: some View {
         if case .confirming(let heard) = coordinator.voiceCheckUIState {
-            HStack(spacing: Theme.Metric.gap) {
-                Text("I think you said “\(heard)”. Is that right?")
-                    .font(Theme.Font.label(16))
-                    .foregroundStyle(.white)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.7)
-                Spacer(minLength: 8)
-                Button { coordinator.voiceCheckConfirmYes() } label: {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 32, weight: .bold))
-                        .frame(width: 110, height: 72)
-                }
-                .buttonStyle(ChunkyKeyStyle(base: Theme.Color.correct,
-                                           deep: Theme.Color.correct.shaded(by: -0.35), corner: 16))
-                .accessibilityLabel("Yes, I said it right")
-                Button { coordinator.voiceCheckTryAgain() } label: {
-                    Image(systemName: "arrow.circlepath")
-                        .font(.system(size: 32, weight: .bold))
-                        .frame(width: 110, height: 72)
-                }
-                .buttonStyle(ChunkyKeyStyle(base: Theme.Color.accent,
-                                           deep: Theme.Color.accent.shaded(by: -0.35), corner: 16))
-                .accessibilityLabel("Try again")
+            let promptText = "I think you said “\(heard)”. Is that right?"
+            let yesButton = Button { coordinator.voiceCheckConfirmYes() } label: {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 32, weight: .bold))
+                    .frame(width: isCompact ? nil : 110, height: 72)
+                    .frame(maxWidth: isCompact ? .infinity : nil)
             }
-            .padding(.horizontal, 18).padding(.vertical, 10)
-            .darkPlate(corner: 16)
-            .transition(.opacity.combined(with: .move(edge: .bottom)))
+            .buttonStyle(ChunkyKeyStyle(base: Theme.Color.correct,
+                                       deep: Theme.Color.correct.shaded(by: -0.35), corner: 16))
+            .accessibilityLabel("Yes, I said it right")
+
+            let tryAgainButton = Button { coordinator.voiceCheckTryAgain() } label: {
+                Image(systemName: "arrow.circlepath")
+                    .font(.system(size: 32, weight: .bold))
+                    .frame(width: isCompact ? nil : 110, height: 72)
+                    .frame(maxWidth: isCompact ? .infinity : nil)
+            }
+            .buttonStyle(ChunkyKeyStyle(base: Theme.Color.accent,
+                                       deep: Theme.Color.accent.shaded(by: -0.35), corner: 16))
+            .accessibilityLabel("Try again")
+
+            if isCompact {
+                // Narrow widths can't fit the prompt beside two ≥64pt buttons
+                // (the iPad layout's HStack would squeeze the text to nothing),
+                // so text sits above a full-width button row instead.
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(promptText)
+                        .font(Theme.Font.label(16))
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    HStack(spacing: Theme.Metric.gap) {
+                        yesButton
+                        tryAgainButton
+                    }
+                }
+                .padding(.horizontal, 16).padding(.vertical, 12)
+                .darkPlate(corner: 16)
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
+            } else {
+                HStack(spacing: Theme.Metric.gap) {
+                    Text(promptText)
+                        .font(Theme.Font.label(16))
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.7)
+                    Spacer(minLength: 8)
+                    yesButton
+                    tryAgainButton
+                }
+                .padding(.horizontal, 18).padding(.vertical, 10)
+                .darkPlate(corner: 16)
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
         }
     }
 
@@ -98,9 +131,12 @@ struct PracticeCardView: View {
                     .font(Theme.Font.label(15))
                     .foregroundStyle(Theme.Color.inkSoft)
                 ProgressStrip(completed: coordinator.completedCount, total: coordinator.totalWords,
-                             pulseTick: coordinator.pulseTick)
+                             pulseTick: coordinator.pulseTick, maxWidth: isCompact ? 170 : 240)
             }
         }
+        // Compact: leave clearance on the trailing edge for the mic indicator
+        // overlay pinned top-trailing, so the two never overlap at narrow widths.
+        .padding(.trailing, isCompact ? 52 : 0)
     }
 
     private var wordArea: some View {
@@ -111,21 +147,29 @@ struct PracticeCardView: View {
                 .minimumScaleFactor(0.12)
                 .lineLimit(1)
                 .frame(maxWidth: .infinity)
-                .padding(.trailing, 80)   // keep clear of the side controls
+                // iPad: keep clear of the side-controls column. Compact: the
+                // side controls move below the word (see `sideControlsRow`),
+                // so the word is free to use the full width.
+                .padding(.trailing, isCompact ? 0 : 80)
+
+            if isCompact { sideControlsRow }
 
             if coordinator.sentenceRevealed, let sentence = coordinator.currentSentence {
                 Text(sentence)
                     .font(Theme.Font.body(20))
                     .foregroundStyle(Theme.Color.inkSoft)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 60)
+                    .padding(.horizontal, isCompact ? 24 : 60)
                     .transition(.opacity)
             }
         }
         .animation(Theme.Motion.snappy, value: coordinator.sentenceRevealed)
-        .overlay(alignment: .trailing) { sideControls }
+        .overlay(alignment: .trailing) {
+            if !isCompact { sideControls }
+        }
     }
 
+    /// iPad: right-edge column overlaying the word.
     private var sideControls: some View {
         VStack(spacing: 12) {
             Button { coordinator.replayWord() } label: {
@@ -152,6 +196,35 @@ struct PracticeCardView: View {
         }
     }
 
+    /// Compact: the same two controls as a small horizontal row under the
+    /// word instead of a right-edge column (there's no side margin to hang
+    /// them off of in portrait).
+    private var sideControlsRow: some View {
+        HStack(spacing: 12) {
+            Button { coordinator.replayWord() } label: {
+                Image(systemName: "speaker.wave.2.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 44, height: 44)
+            }
+            .darkPlate(corner: 14)
+            .buttonStyle(PopButtonStyle())
+            .accessibilityLabel("Replay word")
+
+            if coordinator.currentSentence != nil {
+                Button { coordinator.toggleSentence() } label: {
+                    Image(systemName: "text.quote")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 44, height: 44)
+                }
+                .darkPlate(corner: 14)
+                .buttonStyle(PopButtonStyle())
+                .accessibilityLabel("In a sentence")
+            }
+        }
+    }
+
     /// Parent-scored gets three buttons (§6.4); solo gets Show-answer, which
     /// swaps into the two self-score buttons once tapped (§6.7). Tricky Words
     /// has no style of its own and renders whichever `controlStyle` it inherited.
@@ -159,7 +232,10 @@ struct PracticeCardView: View {
     private var scoringButtons: some View {
         switch coordinator.controlStyle {
         case .parentScored:
-            HStack(spacing: Theme.Metric.gap) {
+            // Compact: same equal-thirds row, just tighter gutters/type so
+            // three keys plus their labels fit an iPhone-portrait width
+            // (the iPad HStack's full gap/font sizing only fit iPad widths).
+            HStack(spacing: isCompact ? 8 : Theme.Metric.gap) {
                 scoreButton(title: "Got it", systemImage: "checkmark", base: Theme.Color.correct) {
                     coordinator.score(.gotIt)
                 }
@@ -175,7 +251,7 @@ struct PracticeCardView: View {
 
         case .solo:
             if coordinator.revealed {
-                HStack(spacing: Theme.Metric.gap) {
+                HStack(spacing: isCompact ? 8 : Theme.Metric.gap) {
                     scoreButton(title: "I got it", systemImage: "checkmark", base: Theme.Color.correct) {
                         coordinator.score(.gotIt)
                     }
@@ -228,12 +304,15 @@ struct PracticeCardView: View {
     private func scoreButton(title: String, systemImage: String, base: Color,
                              action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            VStack(spacing: 8) {
-                Image(systemName: systemImage).font(.system(size: 30, weight: .bold))
-                Text(title).font(Theme.Font.label(18))
+            VStack(spacing: isCompact ? 4 : 8) {
+                Image(systemName: systemImage).font(.system(size: isCompact ? 22 : 30, weight: .bold))
+                Text(title)
+                    .font(Theme.Font.label(isCompact ? 14 : 18))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 110)
+            .frame(height: isCompact ? 84 : 110)
         }
         .buttonStyle(ChunkyKeyStyle(base: base, deep: base.shaded(by: -0.35)))
     }
@@ -245,6 +324,7 @@ struct ProgressStrip: View {
     let completed: Int
     let total: Int
     let pulseTick: Int
+    var maxWidth: CGFloat = 240
 
     @State private var pulse = false
 
@@ -256,7 +336,7 @@ struct ProgressStrip: View {
                     .frame(height: 6)
             }
         }
-        .frame(maxWidth: 240)
+        .frame(maxWidth: maxWidth)
         .scaleEffect(y: pulse ? 1.8 : 1, anchor: .center)
         .animation(Theme.Motion.snappy, value: pulse)
         .onChange(of: pulseTick) { _, _ in
@@ -336,10 +416,11 @@ struct PulsingMicIndicator: View {
 struct HoldMicButton: View {
     @ObservedObject var coordinator: SessionCoordinator
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.horizontalSizeClass) private var hSizeClass
     @State private var isPressingDown = false
     @State private var idlePulse = false
 
-    private let baseDiameter: CGFloat = 130
+    private var baseDiameter: CGFloat { hSizeClass == .compact ? 110 : 130 }
     private var isActive: Bool { isPressingDown || coordinator.holdMicLatched }
     private var clampedLevel: CGFloat { CGFloat(min(max(coordinator.micLevel, 0), 1)) }
 

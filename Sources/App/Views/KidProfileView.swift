@@ -11,7 +11,12 @@ import SwiftData
 struct KidProfileView: View {
     var onClose: () -> Void = {}
     @Environment(\.modelContext) private var context
+    @Environment(\.horizontalSizeClass) private var hSizeClass
     @Query(filter: #Predicate<Profile> { $0.isActive }) private var activeProfiles: [Profile]
+
+    /// Compact (iPhone portrait): smaller avatar/name/tiles so the dark card
+    /// fits 390pt width without clipping. Regular (iPad): untouched.
+    private var isCompact: Bool { hSizeClass == .compact }
 
     @State private var editingName = false
     @State private var draftName = ""
@@ -61,16 +66,16 @@ struct KidProfileView: View {
 
     private var hero: some View {
         VStack(spacing: 8) {
-            HStack(spacing: 18) {
+            HStack(spacing: isCompact ? 12 : 18) {
                 Button {
                     pickingAvatar = true
                     Feedback.fire(.keyTap)
                 } label: {
-                    AvatarBadge(key: profile?.avatarSymbol ?? "avatar1", size: 96)
+                    AvatarBadge(key: profile?.avatarSymbol ?? "avatar1", size: isCompact ? 72 : 96)
                         .shadow(color: .black.opacity(0.4), radius: 8, y: 3)
                         .overlay(alignment: .bottomTrailing) {
                             Image(systemName: "pencil.circle.fill")
-                                .font(.system(size: 28))
+                                .font(.system(size: isCompact ? 22 : 28))
                                 .foregroundStyle(.white, Theme.Color.primary)
                                 .background(Circle().fill(Self.sheetBG).frame(width: 22, height: 22))
                         }
@@ -79,7 +84,7 @@ struct KidProfileView: View {
 
                 if editingName {
                     TextField("", text: $draftName)
-                        .font(Theme.Font.display(38)).foregroundStyle(.white)
+                        .font(Theme.Font.display(isCompact ? 28 : 38)).foregroundStyle(.white)
                         .textInputAutocapitalization(.words)
                         .autocorrectionDisabled()
                         .focused($nameFocused)
@@ -88,23 +93,24 @@ struct KidProfileView: View {
                         .onChange(of: draftName) { _, new in
                             if new.count > 12 { draftName = String(new.prefix(12)) }
                         }
-                        .frame(maxWidth: 300)
+                        .frame(maxWidth: isCompact ? 190 : 300)
                         .padding(.vertical, 6).padding(.horizontal, 14)
                         .background(Color.white.opacity(0.12),
                                     in: RoundedRectangle(cornerRadius: 14))
                 } else {
-                    HStack(spacing: 12) {
+                    HStack(spacing: isCompact ? 8 : 12) {
                         Text(profile?.name ?? "Reader")
-                            .font(Theme.Font.display(38)).foregroundStyle(.white)
+                            .font(Theme.Font.display(isCompact ? 28 : 38)).foregroundStyle(.white)
+                            .lineLimit(1).minimumScaleFactor(0.7)
                         Button {
                             draftName = profile?.name ?? ""
                             editingName = true
                             nameFocused = true
                         } label: {
                             Label("Edit", systemImage: "pencil")
-                                .font(Theme.Font.label(14))
+                                .font(Theme.Font.label(isCompact ? 12 : 14))
                                 .foregroundStyle(.white)
-                                .padding(.horizontal, 12).padding(.vertical, 7)
+                                .padding(.horizontal, isCompact ? 10 : 12).padding(.vertical, isCompact ? 6 : 7)
                                 .background(Capsule().fill(.white.opacity(0.15)))
                                 .overlay(Capsule().strokeBorder(.white.opacity(0.25)))
                         }
@@ -118,9 +124,9 @@ struct KidProfileView: View {
     // MARK: Stat tiles — exactly two (§6.11): day streak, words I know.
 
     private var statTiles: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: isCompact ? 10 : 14) {
             statTile {
-                Image(systemName: "flame.fill").font(.system(size: 34))
+                Image(systemName: "flame.fill").font(.system(size: isCompact ? 26 : 34))
                     .foregroundStyle(Theme.Color.accent)
             } value: {
                 "\(profile?.streakDays ?? 0)"
@@ -128,7 +134,7 @@ struct KidProfileView: View {
                 "day streak"
             }
             statTile {
-                Image(systemName: "book.fill").font(.system(size: 32))
+                Image(systemName: "book.fill").font(.system(size: isCompact ? 24 : 32))
                     .foregroundStyle(Theme.Color.correct)
             } value: {
                 "\(profile.map { service.wordsKnownCount(for: $0) } ?? 0)"
@@ -141,14 +147,14 @@ struct KidProfileView: View {
     private func statTile(@ViewBuilder icon: () -> some View,
                           value: () -> String, label: () -> String) -> some View {
         VStack(spacing: 6) {
-            HStack(spacing: 10) {
+            HStack(spacing: isCompact ? 6 : 10) {
                 icon()
-                Text(value()).font(Theme.Font.number(40)).foregroundStyle(.white)
+                Text(value()).font(Theme.Font.number(isCompact ? 30 : 40)).foregroundStyle(.white)
             }
-            Text(label()).font(Theme.Font.label(16)).foregroundStyle(.white.opacity(0.65))
+            Text(label()).font(Theme.Font.label(isCompact ? 13 : 16)).foregroundStyle(.white.opacity(0.65))
         }
         .frame(maxWidth: .infinity)
-        .frame(height: 128)
+        .frame(height: isCompact ? 100 : 128)
         .background(RoundedRectangle(cornerRadius: 16).fill(Color.white.opacity(0.07)))
         .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.08)))
     }
@@ -158,13 +164,13 @@ struct KidProfileView: View {
     private var avatarPickerOverlay: some View {
         VStack(spacing: 14) {
             Text("Pick your reader")
-                .font(Theme.Font.display(22)).foregroundStyle(.white)
+                .font(Theme.Font.display(isCompact ? 19 : 22)).foregroundStyle(.white)
             AvatarCarousel(selected: Binding(
                 get: { profile?.avatarSymbol ?? "avatar1" },
                 set: { new in
                     profile?.avatarSymbol = new
                     try? context.save()
-                }), itemSize: 120)
+                }), itemSize: isCompact ? 92 : 120)
             Button {
                 pickingAvatar = false
             } label: {

@@ -7,7 +7,12 @@ import SwiftData
 /// this entirely (`onboarded = true` at creation).
 struct OnboardingView: View {
     @Environment(\.modelContext) private var context
+    @Environment(\.horizontalSizeClass) private var hSizeClass
     @Query(filter: #Predicate<Profile> { $0.isActive }) private var activeProfiles: [Profile]
+
+    /// Compact (iPhone portrait): every page dials type/size down a notch so
+    /// the 5-step flow fits 390pt width. Regular (iPad): untouched.
+    private var isCompact: Bool { hSizeClass == .compact }
 
     private enum Step: Int, CaseIterable { case welcome, name, level, avatar, ready }
     @State private var step: Step = .welcome
@@ -91,35 +96,38 @@ struct OnboardingView: View {
 
     /// A calm landing beat — no keyboard on the first beat (§6.2).
     private var welcomePage: some View {
-        VStack(spacing: 24) {
+        VStack(spacing: isCompact ? 18 : 24) {
             Text("Ready to become a word wizard?")
-                .font(Theme.Font.display(44)).foregroundStyle(.white)
+                .font(Theme.Font.display(isCompact ? 32 : 44)).foregroundStyle(.white)
                 .multilineTextAlignment(.center)
                 .shadow(radius: 4)
             Text("Big words. Short practice. You've got this.")
-                .font(Theme.Font.body(22)).foregroundStyle(.white.opacity(0.85))
+                .font(Theme.Font.body(isCompact ? 17 : 22)).foregroundStyle(.white.opacity(0.85))
+                .multilineTextAlignment(.center)
             Button {
                 advance()
             } label: {
                 Text("Let's go!")
-                    .font(Theme.Font.display(28))
-                    .padding(.horizontal, 48).padding(.vertical, 20)
+                    .font(Theme.Font.display(isCompact ? 22 : 28))
+                    .padding(.horizontal, isCompact ? 36 : 48).padding(.vertical, isCompact ? 16 : 20)
             }
             .buttonStyle(ChunkyKeyStyle(base: Theme.Color.correct,
                                         deep: Theme.Color.correct.shaded(by: -0.35),
                                         corner: Theme.Metric.corner))
             .padding(.top, 12)
         }
+        .padding(.horizontal, isCompact ? 12 : 0)
     }
 
     private var namePage: some View {
-        VStack(spacing: 22) {
+        VStack(spacing: isCompact ? 18 : 22) {
             Text("What's your name, reader?")
-                .font(Theme.Font.display(30)).foregroundStyle(.white)
+                .font(Theme.Font.display(isCompact ? 24 : 30)).foregroundStyle(.white)
+                .multilineTextAlignment(.center)
                 .shadow(radius: 4)
             TextField("", text: $name, prompt: Text("Your name")
                 .foregroundStyle(.white.opacity(0.35)))
-                .font(Theme.Font.display(26)).foregroundStyle(.white)
+                .font(Theme.Font.display(isCompact ? 22 : 26)).foregroundStyle(.white)
                 .multilineTextAlignment(.center)
                 .textInputAutocapitalization(.words)
                 .autocorrectionDisabled()
@@ -129,8 +137,8 @@ struct OnboardingView: View {
                 .onChange(of: name) { _, new in
                     if new.count > 12 { name = String(new.prefix(12)) }
                 }
-                .frame(maxWidth: 340)
-                .padding(.vertical, 14).padding(.horizontal, 20)
+                .frame(maxWidth: isCompact ? 280 : 340)
+                .padding(.vertical, isCompact ? 12 : 14).padding(.horizontal, isCompact ? 16 : 20)
                 .darkPlate(corner: 18)
             nextButton
         }
@@ -138,24 +146,25 @@ struct OnboardingView: View {
     }
 
     private var levelPage: some View {
-        VStack(spacing: 26) {
+        VStack(spacing: isCompact ? 20 : 26) {
             Text("What grade are you in?")
-                .font(Theme.Font.display(30)).foregroundStyle(.white)
+                .font(Theme.Font.display(isCompact ? 24 : 30)).foregroundStyle(.white)
+                .multilineTextAlignment(.center)
                 .shadow(radius: 4)
-            HStack(spacing: 16) {
+            HStack(spacing: isCompact ? 10 : 16) {
                 ForEach(grades, id: \.code) { g in
                     Button {
                         level = g.code
                         Feedback.fire(.keyTap)
                     } label: {
                         Text(g.label)
-                            .font(Theme.Font.display(g.label.count > 1 ? 20 : 28))
+                            .font(Theme.Font.display(gradeFontSize(for: g.label)))
                             .foregroundStyle(.white)
-                            .frame(width: 88, height: 88)
+                            .frame(width: isCompact ? 58 : 88, height: isCompact ? 58 : 88)
                     }
                     .buttonStyle(ChunkyKeyStyle(base: Theme.Color.primary,
                                                 deep: Theme.Color.primary.shaded(by: -0.35),
-                                                corner: 44))
+                                                corner: isCompact ? 29 : 44))
                     .overlay {
                         if level == g.code {
                             Circle().strokeBorder(Theme.Color.accent, lineWidth: 4)
@@ -170,35 +179,42 @@ struct OnboardingView: View {
         }
     }
 
+    private func gradeFontSize(for label: String) -> CGFloat {
+        if isCompact { return label.count > 1 ? 14 : 20 }
+        return label.count > 1 ? 20 : 28
+    }
+
     private var avatarPage: some View {
-        VStack(spacing: 18) {
+        VStack(spacing: isCompact ? 14 : 18) {
             Text("Pick your reader!")
-                .font(Theme.Font.display(30)).foregroundStyle(.white)
+                .font(Theme.Font.display(isCompact ? 24 : 30)).foregroundStyle(.white)
                 .shadow(radius: 4)
-            AvatarCarousel(selected: $avatarKey, itemSize: 230)
+            AvatarCarousel(selected: $avatarKey, itemSize: isCompact ? 150 : 230)
             nextButton
-                .padding(.top, 20)
+                .padding(.top, isCompact ? 12 : 20)
         }
     }
 
     private var readyPage: some View {
-        VStack(spacing: 24) {
-            AvatarBadge(key: avatarKey, size: 230)
+        VStack(spacing: isCompact ? 18 : 24) {
+            AvatarBadge(key: avatarKey, size: isCompact ? 160 : 230)
                 .shadow(color: Theme.Color.accent.opacity(0.4), radius: 20)
             Text("You're ready, \(name.trimmingCharacters(in: .whitespaces))!")
-                .font(Theme.Font.display(46)).foregroundStyle(.white)
+                .font(Theme.Font.display(isCompact ? 32 : 46)).foregroundStyle(.white)
+                .multilineTextAlignment(.center)
                 .shadow(radius: 4)
             Button {
                 finish()
             } label: {
                 Text("Start reading!")
-                    .font(Theme.Font.display(28))
-                    .padding(.horizontal, 48).padding(.vertical, 20)
+                    .font(Theme.Font.display(isCompact ? 22 : 28))
+                    .padding(.horizontal, isCompact ? 36 : 48).padding(.vertical, isCompact ? 16 : 20)
             }
             .buttonStyle(ChunkyKeyStyle(base: Theme.Color.accent,
                                         deep: Theme.Color.accent.shaded(by: -0.35),
                                         corner: Theme.Metric.corner))
         }
+        .padding(.horizontal, isCompact ? 12 : 0)
     }
 
     private var nextButton: some View {
@@ -206,8 +222,8 @@ struct OnboardingView: View {
             advance()
         } label: {
             Text("Next")
-                .font(Theme.Font.display(26))
-                .padding(.horizontal, 64).padding(.vertical, 18)
+                .font(Theme.Font.display(isCompact ? 22 : 26))
+                .padding(.horizontal, isCompact ? 48 : 64).padding(.vertical, isCompact ? 15 : 18)
         }
         .buttonStyle(ChunkyKeyStyle(base: Theme.Color.correct,
                                     deep: Theme.Color.correct.shaded(by: -0.35),

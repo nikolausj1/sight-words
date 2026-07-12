@@ -9,6 +9,12 @@ struct DashboardView: View {
     let profile: Profile?
     let service: LearningService
 
+    @Environment(\.horizontalSizeClass) private var hSizeClass
+    /// Compact (iPhone portrait): word rows reflow their meta (accuracy/day
+    /// count/last-seen) onto a second line instead of cramming one row.
+    /// Regular (iPad): identical to before.
+    private var isCompact: Bool { hSizeClass == .compact }
+
     @State private var masteredOpen = false
     @State private var selectedWord: WordProgressRecord?
 
@@ -96,35 +102,72 @@ struct DashboardView: View {
         }
     }
 
+    @ViewBuilder
     private func wordRow(_ wp: WordProgressRecord) -> some View {
-        Button {
-            selectedWord = wp
-        } label: {
-            HStack(spacing: 10) {
-                Text(wp.wordText)
-                    .font(Theme.Font.label(16)).foregroundStyle(Theme.Color.ink)
-                Spacer()
-                Text(accuracyLabel(wp))
-                    .font(Theme.Font.label(13)).foregroundStyle(Theme.Color.inkSoft)
-                if wp.stateRaw == WordState.fluent.rawValue || wp.stateRaw == WordState.developing.rawValue {
-                    Text("\(min(wp.fluentDayCount, 3)) of 3 days")
-                        .font(Theme.Font.label(12)).foregroundStyle(.white)
-                        .padding(.horizontal, 8).padding(.vertical, 3)
-                        .background(Capsule().fill(Theme.Color.primary))
+        if isCompact {
+            Button {
+                selectedWord = wp
+            } label: {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        Text(wp.wordText)
+                            .font(Theme.Font.label(16)).foregroundStyle(Theme.Color.ink)
+                        Spacer()
+                        Text(accuracyLabel(wp))
+                            .font(Theme.Font.label(13)).foregroundStyle(Theme.Color.inkSoft)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Theme.Color.inkSoft.opacity(0.6))
+                    }
+                    HStack(spacing: 6) {
+                        if wp.stateRaw == WordState.fluent.rawValue || wp.stateRaw == WordState.developing.rawValue {
+                            Text("\(min(wp.fluentDayCount, 3)) of 3 days")
+                                .font(Theme.Font.label(11)).foregroundStyle(.white)
+                                .padding(.horizontal, 7).padding(.vertical, 2)
+                                .background(Capsule().fill(Theme.Color.primary))
+                        }
+                        if let last = wp.lastSeenAt {
+                            Text(last.formatted(.relative(presentation: .named)))
+                                .font(Theme.Font.label(11)).foregroundStyle(Theme.Color.inkSoft)
+                                .lineLimit(1)
+                        }
+                        Spacer(minLength: 0)
+                    }
                 }
-                if let last = wp.lastSeenAt {
-                    Text(last.formatted(.relative(presentation: .named)))
-                        .font(Theme.Font.label(12)).foregroundStyle(Theme.Color.inkSoft)
-                        .lineLimit(1)
-                }
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Theme.Color.inkSoft.opacity(0.6))
+                .padding(.horizontal, 12).padding(.vertical, 10)
+                .background(Theme.Color.bg, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
-            .padding(.horizontal, 12).padding(.vertical, 10)
-            .background(Theme.Color.bg, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .buttonStyle(.plain)
+        } else {
+            Button {
+                selectedWord = wp
+            } label: {
+                HStack(spacing: 10) {
+                    Text(wp.wordText)
+                        .font(Theme.Font.label(16)).foregroundStyle(Theme.Color.ink)
+                    Spacer()
+                    Text(accuracyLabel(wp))
+                        .font(Theme.Font.label(13)).foregroundStyle(Theme.Color.inkSoft)
+                    if wp.stateRaw == WordState.fluent.rawValue || wp.stateRaw == WordState.developing.rawValue {
+                        Text("\(min(wp.fluentDayCount, 3)) of 3 days")
+                            .font(Theme.Font.label(12)).foregroundStyle(.white)
+                            .padding(.horizontal, 8).padding(.vertical, 3)
+                            .background(Capsule().fill(Theme.Color.primary))
+                    }
+                    if let last = wp.lastSeenAt {
+                        Text(last.formatted(.relative(presentation: .named)))
+                            .font(Theme.Font.label(12)).foregroundStyle(Theme.Color.inkSoft)
+                            .lineLimit(1)
+                    }
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Theme.Color.inkSoft.opacity(0.6))
+                }
+                .padding(.horizontal, 12).padding(.vertical, 10)
+                .background(Theme.Color.bg, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            .buttonStyle(.plain)
         }
-        .buttonStyle(.plain)
     }
 
     private func accuracyLabel(_ wp: WordProgressRecord) -> String {

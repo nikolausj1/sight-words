@@ -6,6 +6,8 @@ import SwiftUI
 /// the beat finishes.
 struct NewWordIntroView: View {
     @ObservedObject var coordinator: SessionCoordinator
+    @Environment(\.horizontalSizeClass) private var hSizeClass
+    private var isCompact: Bool { hSizeClass == .compact }
 
     var body: some View {
         VStack(spacing: Theme.Metric.gap * 1.5) {
@@ -34,7 +36,7 @@ struct NewWordIntroView: View {
                     .font(Theme.Font.body(20))
                     .foregroundStyle(Theme.Color.inkSoft)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 60)
+                    .padding(.horizontal, isCompact ? 24 : 60)
                     .transition(.opacity)
             }
         }
