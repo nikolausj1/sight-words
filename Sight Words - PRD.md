@@ -274,7 +274,7 @@ Port of Math Tutor's `ParentAreaView` structure: gear → fullScreenCover; dimme
 - **Metrics/motion:** corner 22 / cornerSmall 14 / gap 16 / pad 24; snappy spring in-loop, celebrate spring at session end; PopButtonStyle press behavior; respect Reduce Motion.
 - **Components:** ChunkyKeyStyle for all big kid-facing buttons; darkPlate for controls over content; cardSurface (flat, hairline border, no shadow) for parent-area cards; ModalCloseButton; AvatarBadge/AvatarCarousel; NumberPadView for the gate.
 - **Tone:** calm, warm, spare. The practice screen looks closer to a beautifully-set flash card than to a game.
-- **Art is placeholder-first** (Build Guide): the app must feel complete with SF-Symbol avatars, no splash art, and no custom sounds. Splash art, avatar art, and SFX are generated later into `_review/` for Justin to pick (3–4 candidates each), wired in via the `Art.exists()` pattern with zero view changes.
+- **Art landed (v1.4 visual pass):** generated suite (Gemini, flat-vector warm style) — fox-mascot app icon, sunrise splash (fox + owl), 8 animal art avatars, plus ElevenLabs SFX for all Feedback events, a session-complete confetti/avatar celebration, a home streak chip, and a warm gradient backdrop. All candidates remain in `_review/art/` for swapping; the `Art.exists()` placeholder pattern still governs, so removing an imageset falls back cleanly.
 - **Sound/haptics:** port `Feedback.fire(event)` — events for keyTap, correct, almost, reteach, sessionComplete; `.ambient` session; missing sound files silently no-op. Word/sentence speech: AVSpeechSynthesizer (child-appropriate rate ~0.45) until ElevenLabs clips land; clips are bundled `m4a`, looked up by word, AVSpeech fallback (§4).
 
 ## 8. Data Model

@@ -122,11 +122,33 @@ struct HomeView: View {
     private var isCompact: Bool { hSizeClass == .compact }
 
     private var topBar: some View {
-        HStack {
-            profileChip
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: isCompact ? 6 : 8) {
+                profileChip
+                if let profile, profile.streakDays >= 2 {
+                    streakChip(days: profile.streakDays)
+                }
+            }
             Spacer()
             gearButton
         }
+    }
+
+    /// Home streak chip (§CX): only shown once there's something to celebrate
+    /// (2+ days) — a lone day-1 chip would just be noise every single time.
+    private func streakChip(days: Int) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "flame.fill")
+                .font(.system(size: isCompact ? 12 : 14, weight: .semibold))
+            Text("\(days)-day streak")
+                .font(Theme.Font.label(isCompact ? 12 : 14))
+        }
+        .foregroundStyle(Theme.Color.streakOrange)
+        .padding(.vertical, isCompact ? 4 : 6)
+        .padding(.horizontal, isCompact ? 10 : 12)
+        .background(Theme.Color.streakCream)
+        .clipShape(Capsule())
+        .padding(.leading, isCompact ? 4 : 6)
     }
 
     private var profileChip: some View {

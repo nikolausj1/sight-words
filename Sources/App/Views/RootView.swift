@@ -47,7 +47,7 @@ struct RootView: View {
 
     var body: some View {
         ZStack {
-            Theme.Color.bg.ignoresSafeArea()
+            WarmBackdrop()
             HomeView()
             if needsOnboarding {
                 OnboardingView()

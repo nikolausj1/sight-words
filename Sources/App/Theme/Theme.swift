@@ -20,6 +20,13 @@ enum Theme {
         /// Onboarding backdrop gradient stops.
         static let onboardTop = SwiftUI.Color(red: 0.11, green: 0.12, blue: 0.30)
         static let onboardBottom = SwiftUI.Color(red: 0.05, green: 0.05, blue: 0.14)
+
+        /// `WarmBackdrop`'s bottom stop: a subtly creamier tint of `bg`, not a new hue.
+        static let bgWarm = SwiftUI.Color(red: 0.985, green: 0.97, blue: 0.945)
+
+        /// Home streak chip (§CX): warm flame orange on soft cream.
+        static let streakOrange = SwiftUI.Color(red: 0.93, green: 0.42, blue: 0.13)
+        static let streakCream = SwiftUI.Color(red: 1.0, green: 0.95, blue: 0.88)
     }
 
     // MARK: Typography — SF Rounded; the practice word is the hero.
@@ -44,6 +51,25 @@ enum Theme {
         static let quick = Animation.easeOut(duration: 0.18)
         /// Session-end beats: bigger, bouncier.
         static let celebrate = Animation.spring(response: 0.5, dampingFraction: 0.6)
+    }
+}
+
+/// Very subtle vertical warmth behind Home, Session, and SessionComplete
+/// screens: `Theme.Color.bg` at the top blending into `bgWarm` (a creamier
+/// tint, not a new hue) at the bottom, plus the existing noise texture at
+/// low opacity so it reads as material rather than a flat fill. Deliberately
+/// quiet — the practice word stays the focus. Not used inside the parent
+/// area card or onboarding, which already have their own backdrops.
+struct WarmBackdrop: View {
+    var body: some View {
+        ZStack {
+            LinearGradient(colors: [Theme.Color.bg, Theme.Color.bgWarm],
+                           startPoint: .top, endPoint: .bottom)
+            Textures.noise
+                .opacity(0.02)
+                .blendMode(.overlay)
+        }
+        .ignoresSafeArea()
     }
 }
 

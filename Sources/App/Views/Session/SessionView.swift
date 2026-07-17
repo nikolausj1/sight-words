@@ -15,7 +15,7 @@ struct SessionView: View {
 
     var body: some View {
         ZStack {
-            Theme.Color.bg.ignoresSafeArea()
+            WarmBackdrop()
             content
         }
         .onAppear {

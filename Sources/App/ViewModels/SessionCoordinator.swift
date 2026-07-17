@@ -106,6 +106,11 @@ final class SessionCoordinator: ObservableObject {
     /// solo sessions.
     let micMode: MicMode
 
+    /// Exposed read-only so `SessionCompleteView` can show the child's real
+    /// avatar in the celebration moment without the view needing its own
+    /// profile lookup.
+    var avatarSymbol: String { profile.avatarSymbol }
+
     private let service: LearningService
     private let speech: SpeechService
     private let voiceCheck: VoiceCheckService

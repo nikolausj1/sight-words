@@ -23,6 +23,18 @@ struct SightWordsApp: App {
         }
         #endif
         service.bootstrap()
+        #if DEBUG
+        // Seeds a visible streak on the active profile without opening any
+        // overlay (unlike "-demoDashboard", which seeds a streak too but only
+        // behind the parent area cover) — for screenshotting the Home streak
+        // chip on its own.
+        if ProcessInfo.processInfo.arguments.contains("-demoStreak") {
+            let profile = service.activeProfile()
+            profile.streakDays = 3
+            profile.lastPracticeDate = .now
+            try? container.mainContext.save()
+        }
+        #endif
     }
 
     var body: some Scene {
