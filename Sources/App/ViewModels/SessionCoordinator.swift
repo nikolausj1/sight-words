@@ -62,16 +62,25 @@ enum SessionPhase {
     case card                     // a scoreable card is on screen
     case feedback(ScoreResult)    // brief post-score beat; buttons disabled
     case reteach(WordSnapshot)    // second-miss interstitial
+    /// Guided weave only (Games Spec §2, WP-G8 CX pass): a ~1.6s "Bonus
+    /// round!" bridge beat between the cards portion finishing and the game
+    /// round's cover presenting -- replaces what used to be a hard cut
+    /// straight into `.gameRound`'s `fullScreenCover`. Purely a visual+sfx
+    /// moment (`GameBridgeView`, `Feedback.bonusRoundBridge`); no new speech.
+    /// `presentGameBridge(_:)` owns the timing and advances to `.gameRound`
+    /// on its own -- the view layer just renders whichever phase is current.
+    case gameBridge(GameID)
     /// Guided weave only (Games Spec §2, WP-G8): the cards portion just
-    /// finished and one game round is being hosted before `.complete`. The
-    /// view layer renders this as a nested `fullScreenCover(item:)` (mirrors
-    /// `RootView`'s `-demoGame` launch hook) so the pushed game's own
-    /// `@Environment(\.dismiss)` calls (round-celebration "Next", the hold-
-    /// to-exit gate) close just that cover -- never the guided session
-    /// itself -- and the cover's `onDismiss` calls
-    /// `SessionCoordinator.completeGuidedGameRound()` to advance to
-    /// `.complete`. See that method's doc comment for why this was chosen
-    /// over threading an explicit `onGuidedComplete` closure into every game.
+    /// finished (after its `.gameBridge` beat) and one game round is being
+    /// hosted before `.complete`. The view layer renders this as a nested
+    /// `fullScreenCover(item:)` (mirrors `RootView`'s `-demoGame` launch
+    /// hook) so the pushed game's own `@Environment(\.dismiss)` calls
+    /// (round-celebration "Next", the hold-to-exit gate) close just that
+    /// cover -- never the guided session itself -- and the cover's
+    /// `onDismiss` calls `SessionCoordinator.completeGuidedGameRound()` to
+    /// advance to `.complete`. See that method's doc comment for why this
+    /// was chosen over threading an explicit `onGuidedComplete` closure into
+    /// every game.
     case gameRound(GameID)
     case complete
 }
@@ -123,6 +132,11 @@ final class SessionCoordinator: ObservableObject {
     /// `guidedGameRoundEligible`), so `SessionCompleteView` can add its small
     /// "+ a game round!" line.
     @Published private(set) var didPlayGuidedGameRound = false
+    /// Guided weave only: which game actually played, once
+    /// `didPlayGuidedGameRound` is true -- lets `SessionCompleteView` show
+    /// that game's real shelf icon inline instead of a generic controller
+    /// glyph. `nil` whenever `didPlayGuidedGameRound` is false.
+    @Published private(set) var guidedGameID: GameID?
 
     /// Fixed for the whole session — see `ControlStyle`.
     let controlStyle: ControlStyle
@@ -454,12 +468,13 @@ final class SessionCoordinator: ObservableObject {
 
         // Guided weave (Games Spec §2): one game round before SessionComplete,
         // unless the pool's too thin to build a round -- then this behaves
-        // exactly like a normal cards-only session end, silently. `finish()`
-        // returns early in that branch; `.complete` (and its
-        // `Feedback.fire(.sessionComplete)`) is deferred to
-        // `completeGuidedGameRound()` once the round actually finishes.
+        // exactly like a normal cards-only session end, silently, and no
+        // bridge beat shows at all. `finish()` returns early in the eligible
+        // branch; `.complete` (and its `Feedback.fire(.sessionComplete)`) is
+        // deferred to `completeGuidedGameRound()` once the round actually
+        // finishes.
         if kind == .guided, guidedGameRoundEligible {
-            phase = .gameRound(Self.guidedGameID(now: sessionDate))
+            presentGameBridge(Self.guidedGameID(now: sessionDate))
             return
         }
         Feedback.fire(.sessionComplete)
@@ -467,6 +482,24 @@ final class SessionCoordinator: ObservableObject {
     }
 
     // MARK: Guided game round (Games Spec §2, WP-G8)
+
+    /// "Bonus round!" bridge beat (WP-G8 CX pass): flips to `.gameBridge` (the
+    /// view layer renders `GameBridgeView` -- zoom/fade icon + text, sfx,
+    /// no new speech) and, after a fixed ~1.6s, advances to `.gameRound`,
+    /// which is what actually presents the game's `fullScreenCover`. The
+    /// guard on `current == id` before advancing is just defensive -- nothing
+    /// else moves `phase` away from `.gameBridge` during this window -- but
+    /// costs nothing and avoids ever stomping a phase change made some other
+    /// way in the future.
+    private func presentGameBridge(_ id: GameID) {
+        phase = .gameBridge(id)
+        Feedback.fire(.bonusRoundBridge)
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 1_600_000_000)
+            guard let self, case .gameBridge(let current) = self.phase, current == id else { return }
+            self.phase = .gameRound(id)
+        }
+    }
 
     /// "Empty-pool" edge case (Games Spec §2): a game round needs at least a
     /// handful of pool words to build anything (`pickGameWords` itself
@@ -509,8 +542,9 @@ final class SessionCoordinator: ObservableObject {
     /// those files -- `GameWordPicker`'s own learning/developing-weighted
     /// pick already leans toward the words the cards portion just touched.
     func completeGuidedGameRound() {
-        guard case .gameRound = phase else { return }
+        guard case .gameRound(let id) = phase else { return }
         didPlayGuidedGameRound = true
+        guidedGameID = id
         Feedback.fire(.sessionComplete)
         phase = .complete
     }

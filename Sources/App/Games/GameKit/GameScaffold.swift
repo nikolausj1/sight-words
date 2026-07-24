@@ -126,6 +126,28 @@ struct RoundProgressDots: View {
     }
 }
 
+// MARK: - Board area size (environment)
+
+/// The exact, bounded size available to a `GameBoardCard`'s `content()` --
+/// i.e. the board slot's interior, inside its own padding. Zero until the
+/// first layout pass measures it (see `GameBoardCard`). Reading this instead
+/// of a game re-deriving its own board size (e.g. from `UIScreen.main.bounds`,
+/// as `MemoryGameContentView` used to) is now safe: the root cause that made
+/// a `GeometryReader` anywhere in this chain resolve to a wildly wrong size
+/// (an inflated iPad-shaped `GameScaffold` on iPhone -- see `backdrop`'s doc
+/// comment below) is fixed at the source, so this measurement is trustworthy
+/// on every device/orientation GameKit supports.
+private struct GameBoardAreaSizeKey: EnvironmentKey {
+    static let defaultValue: CGSize = .zero
+}
+
+extension EnvironmentValues {
+    var gameBoardAreaSize: CGSize {
+        get { self[GameBoardAreaSizeKey.self] }
+        set { self[GameBoardAreaSizeKey.self] = newValue }
+    }
+}
+
 // MARK: - GameBoardCard
 
 /// The orange-bordered rounded white card every game's board sits on (Games
@@ -134,15 +156,30 @@ struct GameBoardCard<Content: View>: View {
     @ViewBuilder let content: () -> Content
 
     var body: some View {
-        content()
-            .padding(Theme.Metric.pad)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Theme.Color.surface)
-            .clipShape(RoundedRectangle(cornerRadius: Theme.Metric.corner, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: Theme.Metric.corner, style: .continuous)
-                    .strokeBorder(Theme.Color.accent, lineWidth: 3)
+        // `GeometryReader` here measures the slot the surrounding VStack
+        // actually proposes to this card (now trustworthy -- see `backdrop`'s
+        // doc comment on `GameScaffold` for the layout bug this used to
+        // inherit), then hands `content()` the exact, bounded interior size
+        // (slot minus this card's own padding) via `gameBoardAreaSize` --
+        // an explicit numeric `.frame()`, same pattern as the backdrop fix,
+        // rather than a greedy `.frame(maxWidth: .infinity)` that a
+        // misbehaving descendant could still blow past.
+        GeometryReader { geo in
+            let interior = CGSize(
+                width: max(geo.size.width - Theme.Metric.pad * 2, 0),
+                height: max(geo.size.height - Theme.Metric.pad * 2, 0)
             )
+            content()
+                .environment(\.gameBoardAreaSize, interior)
+                .padding(Theme.Metric.pad)
+                .frame(width: geo.size.width, height: geo.size.height)
+        }
+        .background(Theme.Color.surface)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Metric.corner, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Metric.corner, style: .continuous)
+                .strokeBorder(Theme.Color.accent, lineWidth: 3)
+        )
     }
 }
 
@@ -177,6 +214,14 @@ struct GameScaffold<Board: View>: View {
             }
             .padding(isCompact ? Theme.Metric.gap : Theme.Metric.pad)
         }
+        // Belt-and-suspenders: makes this ZStack always claim exactly the
+        // space it's proposed (the full screen, for a `fullScreenCover`
+        // root), rather than leaving its own resolved size to whatever the
+        // largest child reports. Does not by itself fix the backdrop bug
+        // below (a plain `Image` still won by the same mechanism even with
+        // this in place) but guards against a future oversized/unconstrained
+        // sibling doing the same thing again.
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
             SpeechService.shared.speak(segments: instruction.segments)
         }
@@ -184,12 +229,55 @@ struct GameScaffold<Board: View>: View {
 
     @ViewBuilder private var backdrop: some View {
         if Art.exists("game-backdrop") {
-            Image("game-backdrop")
-                .resizable()
-                .scaledToFill()
-                .ignoresSafeArea()
+            // Root cause of the "chrome missing on iPhone" bug (Games Spec
+            // §1): `game-backdrop`'s asset has only one (universal-scale)
+            // representation, so a bare `Image(...).resizable().scaledToFill()`
+            // -- with no explicit numeric frame -- reports its own *raw pixel
+            // dimensions* (1184x864) as this ZStack's resolved size whenever
+            // this ZStack's parent asks for it (confirmed by direct
+            // measurement: `.frame(maxWidth: .infinity, maxHeight: .infinity)`
+            // does NOT fix this -- greedy modifiers only affect concrete
+            // proposals, and 1184x864 still wins). On any iPhone (narrower
+            // than 1184pt) that inflated the WHOLE GameScaffold body -- not
+            // just the backdrop -- so the InstructionSpeaker/HoldToExitButton
+            // row and RoundProgressDots were laid out ~350pt outside the
+            // visible screen (still in the view tree, just off-screen, which
+            // is why they read as "missing" rather than mis-styled). iPads
+            // are wide enough that 1184pt never exceeded the real screen
+            // width, so it never surfaced there. `GameBoardCard`'s board-area
+            // measurement was corrupted by this exact same inflation --
+            // that's why `MemoryGameContentView` had to bypass SwiftUI
+            // layout entirely and read `UIScreen.main.bounds` directly (see
+            // its `boardAreaSize` doc comment).
+            //
+            // Fix: read the ACTUAL proposed size via `GeometryReader` and
+            // force the image to those exact numeric points with `.frame`,
+            // instead of trusting `.scaledToFill()`/`.frame(max:)` to shrink
+            // an oversized intrinsic report on their own.
+            GeometryReader { geo in
+                Image("game-backdrop")
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: geo.size.width, height: geo.size.height)
+                    .clipped()
+            }
+            .ignoresSafeArea()
         } else {
             WarmBackdrop()
         }
     }
 }
+
+// MARK: - "Backdrop/chrome intermittently missing in screenshots" (investigated)
+//
+// Design review flagged screenshots where the backdrop/chrome sometimes
+// didn't show up. Investigated by launching a game (`-demoGame wordHunt`) 5x
+// on the iPad sim, screenshotting each launch, and comparing: all 5 came
+// back pixel-consistent (backdrop, InstructionSpeaker, HoldToExitButton,
+// RoundProgressDots all present every time) -- NOT reproducible in-app on
+// iPad. The most likely explanation is the iPhone-only bug fixed above
+// (`backdrop`'s doc comment): a design pass that screenshotted a mix of
+// iPad and iPhone sims would have seen exactly this "chrome sometimes
+// missing" pattern, entirely explained by device rather than by
+// intermittency. Leaving this as a comment rather than a fix, per this
+// pass's scope, since nothing further reproduced.

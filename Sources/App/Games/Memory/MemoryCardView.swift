@@ -1,5 +1,4 @@
 import SwiftUI
-import AVFoundation
 
 // MARK: - MemoryCardView
 
@@ -118,28 +117,5 @@ struct MemoryCardView: View {
         }
         .padding(6)
         .allowsHitTesting(false)
-    }
-}
-
-// MARK: - MemorySFX
-
-/// Tiny direct-playback helper for the one Memory-specific cue not already
-/// routed through `Feedback` (Games Spec §3.3/§4's `sfx_bloop`, played when
-/// a cleared board's cards animate out). Kept local to this folder rather
-/// than adding a case to the shared `Feedback.Event` enum, same pattern as
-/// `SayMatchSFX`/`sfx_whoosh`. Silently no-ops if the clip isn't bundled.
-enum MemorySFX {
-    private static var players: [String: AVAudioPlayer] = [:]
-
-    static func playBloop() { play("sfx_bloop") }
-
-    private static func play(_ name: String) {
-        if let p = players[name] { p.currentTime = 0; p.play(); return }
-        for ext in ["m4a", "wav", "caf", "mp3"] {
-            if let url = Bundle.main.url(forResource: name, withExtension: ext),
-               let p = try? AVAudioPlayer(contentsOf: url) {
-                p.prepareToPlay(); players[name] = p; p.play(); return
-            }
-        }
     }
 }

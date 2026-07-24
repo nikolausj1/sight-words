@@ -71,10 +71,9 @@ struct SpellingBuilderWord: Identifiable {
 // MARK: - Confusable-letter pairs (Games Spec §3.5/§4)
 
 /// Kept local to this folder (own small copy) rather than reaching into
-/// `MissingLetter`'s own types -- same rationale as `SayMatchSFX`/`MemorySFX`
-/// keeping their one-off SFX local: each game worker's folder is its own
-/// silo, and another game's internal files aren't a frozen contract this one
-/// can lean on.
+/// `MissingLetter`'s own types: each game worker's folder is its own silo,
+/// and another game's internal files aren't a frozen contract this one can
+/// lean on.
 enum SpellingBuilderConfusables {
     private static let pairs: [(Character, Character)] = [("b", "d"), ("p", "q"), ("m", "n"), ("n", "u")]
 

@@ -1,5 +1,4 @@
 import SwiftUI
-import AVFoundation
 
 // MARK: - SayMatchTile
 
@@ -54,30 +53,5 @@ struct SayMatchTile: View {
                     .strokeBorder(Theme.Color.primary.opacity(0.35), lineWidth: 2)
             )
             .shadow(color: .black.opacity(0.12), radius: 6, y: 3)
-    }
-}
-
-// MARK: - SayMatchSFX
-
-/// Tiny direct-playback helper for the one Say & Match-specific cue not
-/// already routed through `Feedback` (Games Spec §4's `sfx_whoosh`, played
-/// when the wrong tiles drift off on a correct tap). Kept local to this
-/// folder rather than adding a case to the shared `Feedback.Event` enum
-/// (Theme/Feedback.swift is outside this game's folder per the registration
-/// contract). Silently no-ops if the clip isn't bundled, same fallback
-/// behavior as `Feedback.play`.
-enum SayMatchSFX {
-    private static var players: [String: AVAudioPlayer] = [:]
-
-    static func playWhoosh() { play("sfx_whoosh") }
-
-    private static func play(_ name: String) {
-        if let p = players[name] { p.currentTime = 0; p.play(); return }
-        for ext in ["m4a", "wav", "caf", "mp3"] {
-            if let url = Bundle.main.url(forResource: name, withExtension: ext),
-               let p = try? AVAudioPlayer(contentsOf: url) {
-                p.prepareToPlay(); players[name] = p; p.play(); return
-            }
-        }
     }
 }

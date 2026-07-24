@@ -67,6 +67,25 @@ struct ChunkyKeyStyle: ButtonStyle {
     }
 }
 
+/// Home Games-shelf tile press state (design review, g8-home-ipad.png): a
+/// slightly deeper press than `PopButtonStyle`'s default (0.96 vs 0.95) paired
+/// with a shadow that "tightens" (shrinks + lightens) on press, so the tile
+/// reads as a lifted card settling down rather than just shrinking in place.
+/// `.compositingGroup()` flattens the tile's icon+label+dots into one layer
+/// first so the shadow wraps the whole tile instead of haloing each subview.
+struct ShelfTileButtonStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    func makeBody(configuration: Configuration) -> some View {
+        let pressed = configuration.isPressed && !reduceMotion
+        return configuration.label
+            .scaleEffect(pressed ? 0.96 : 1)
+            .compositingGroup()
+            .shadow(color: .black.opacity(pressed ? 0.06 : 0.12),
+                    radius: pressed ? 3 : 8, y: pressed ? 1 : 4)
+            .animation(Theme.Motion.quick, value: configuration.isPressed)
+    }
+}
+
 /// Tiny tiled monochrome noise so solid fills feel like a material, not a vector.
 enum Textures {
     static let noise: Image = {

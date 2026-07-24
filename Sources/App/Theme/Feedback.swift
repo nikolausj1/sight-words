@@ -20,6 +20,10 @@ enum Feedback {
         /// "boing", no scolding. Plays `sfx_pop` when that clip exists;
         /// silently no-ops (haptic still fires) until it's added.
         case boing
+        /// Guided seam's "Bonus round!" bridge beat (Games Spec §2, WP-G8 CX
+        /// pass): fires the instant the cards portion hands off to the
+        /// embedded game round, underscoring the zoom/fade-in icon + text.
+        case bonusRoundBridge
     }
 
     static func fire(_ event: Event) {
@@ -36,6 +40,7 @@ enum Feedback {
         case .reteach:        return "sfx_reteach"
         case .sessionComplete: return "sfx_complete"
         case .boing:          return "sfx_pop"
+        case .bonusRoundBridge: return "sfx_whoosh"
         }
     }
 
@@ -77,6 +82,7 @@ enum Feedback {
         case .reteach:         impact(.soft)
         case .sessionComplete: notify(.success)
         case .boing:           impact(.soft)
+        case .bonusRoundBridge: impact(.medium)
         }
         #endif
     }

@@ -6,12 +6,15 @@ import SwiftUI
 /// per this worker's "iPhone compact functional" brief).
 struct MemoryBoardView: View {
     @ObservedObject var coordinator: MemoryCoordinator
-    /// The board card's own interior size, already resolved by
-    /// `MemoryGameContentView` from `UIScreen.main.bounds` -- see that
-    /// type's `boardAreaSize` doc comment for why this view deliberately
-    /// does NOT run its own `GeometryReader` nested inside `GameBoardCard`'s
-    /// chain (confirmed by direct measurement/isolation to sometimes
-    /// resolve to a wildly wrong size on some devices).
+    /// The board card's own interior size, read by `MemoryGameContentView`
+    /// from `GameScaffold`'s `\.gameBoardAreaSize` environment value (see
+    /// `GameBoardCard` in GameScaffold.swift) and passed down as a plain
+    /// value here. This used to be estimated from `UIScreen.main.bounds`
+    /// because a real `GeometryReader` anywhere in this chain inherited a
+    /// GameScaffold-level layout bug that inflated the whole board area to a
+    /// wildly wrong (iPad-shaped) size on iPhone; that bug is now fixed at
+    /// its source, so the environment value is a correct, bounded
+    /// measurement on every device.
     let availableSize: CGSize
     @Environment(\.horizontalSizeClass) private var hSizeClass
     private var isCompact: Bool { hSizeClass == .compact }

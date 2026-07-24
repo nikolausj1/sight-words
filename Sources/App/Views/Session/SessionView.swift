@@ -51,6 +51,8 @@ struct SessionView: View {
             PracticeCardView(coordinator: coordinator) { dismiss() }
         case .reteach:
             ReteachView(coordinator: coordinator)
+        case .gameBridge(let gameID):
+            GameBridgeView(gameID: gameID)
         case .gameRound:
             // Rendered by the `fullScreenCover(item:)` above instead -- this
             // is just what's briefly visible underneath while that cover

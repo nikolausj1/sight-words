@@ -1,4 +1,7 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// Owns one Spelling Builder play session end to end (Games Spec §3.5):
 /// builds the 4-word set, and per word drives the 🎤 T1+ opener (say it,
@@ -283,7 +286,7 @@ final class SpellingBuilderCoordinator: ObservableObject {
     private func unlockTiles(sparkle: Bool, token: UUID) {
         guard wordToken == token, !tilesUnlocked else { return }
         tilesUnlocked = true
-        if sparkle { SpellingBuilderSFX.playSparkle() }
+        if sparkle { GameAudio.shared.playSFX("sfx_sparkle") }
         if activeConfig.memoryMode {
             startReveal(token: token)
         }
@@ -358,7 +361,10 @@ final class SpellingBuilderCoordinator: ObservableObject {
         withAnimation(Theme.Motion.snappy) { slots[index].locked = true }
         tray.removeAll { $0.id == tile.id }
         draggingTile = nil
-        SpellingBuilderSFX.playThunk()
+        #if canImport(UIKit)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        #endif
+        GameAudio.shared.playSFX("sfx_thunk")
 
         guard slots.allSatisfy(\.locked) else { return }
         fuseWord()

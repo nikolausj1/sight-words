@@ -115,7 +115,7 @@ private struct SpellingBuilderTrayTileView: View {
                 if coordinator.draggingTile?.id == tile.id {
                     coordinator.dragEnded(tile: tile, location: value.location)
                 } else {
-                    SpellingBuilderLetterPlayer.shared.play(tile.letter)
+                    GameAudio.shared.playLetter(tile.letter)
                 }
             }
     }

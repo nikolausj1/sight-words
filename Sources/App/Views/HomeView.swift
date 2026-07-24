@@ -8,7 +8,12 @@ import SwiftData
 struct HomeView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.horizontalSizeClass) private var hSizeClass
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Query(sort: \Profile.createdAt) private var profiles: [Profile]
+    /// Idle "breathing" scale on the Play! hero (CX pass): gently invites a
+    /// tap without being distracting. Only runs while Play! is actually
+    /// enabled -- breathing a disabled/greyed key would read as broken.
+    @State private var playBreathing = false
     /// "Play!" (Games Spec §5): the guided session -- cards then one embedded
     /// game round (`SessionKind.guided`).
     @State private var showGuided = false
@@ -52,14 +57,21 @@ struct HomeView: View {
                 Spacer()
             }
 
+            // Games Spec §5 CX pass: a single centered composition instead of
+            // Play! floating in dead space above a status line at the very
+            // bottom. The greeting/ready-line now sits directly ABOVE Play!
+            // (its natural "here's what's ready" lead-in), the hero group
+            // (greeting + Play! + shelf) is vertically centered via matched
+            // flexible spacers, and Practice Together is pushed down to sit
+            // quietly near the bottom edge on its own.
             VStack(spacing: Theme.Metric.gap) {
-                modeButtons
-
-                Text(statusLine)
-                    .font(Theme.Font.body())
-                    .foregroundStyle(Theme.Color.inkSoft)
-                    .multilineTextAlignment(.center)
-                    .padding(.top, Theme.Metric.gap / 2)
+                Spacer(minLength: 0)
+                greetingLine
+                playButton
+                gamesShelf
+                Spacer(minLength: 0)
+                practiceSecondaryButton
+                    .padding(.bottom, isCompact ? 4 : 8)
             }
 
             // In-hierarchy overlay (§6.11): NOT a fullScreenCover, so the
@@ -101,12 +113,24 @@ struct HomeView: View {
         .onAppear { applyDemoArgsIfNeeded() }
     }
 
-    /// §6.3: empty state (no active lists) disables everything with a nudge to
-    /// the parent area; nothing-due keeps buttons enabled with an invite line.
-    private var statusLine: String {
+    /// Greeting/ready-line (CX pass): sits directly above Play! as
+    /// "Hi {name}! N words ready today" -- the "here's what's ready" lead-in
+    /// to the hero button, not an orphaned status line at the screen bottom.
+    /// §6.3: empty state (no active lists) keeps its own nudge to the parent
+    /// area, unprefixed (nothing to greet into yet); nothing-due still greets
+    /// by name with an invite to practice anyway.
+    private var greetingLine: some View {
+        Text(greetingText)
+            .font(Theme.Font.label(isCompact ? 17 : 20))
+            .foregroundStyle(Theme.Color.inkSoft)
+            .multilineTextAlignment(.center)
+    }
+
+    private var greetingText: String {
         guard hasActiveWords else { return "Ask a grown-up to pick your word lists" }
-        return readyCount > 0 ? "\(readyCount) words ready today"
-                              : "All caught up — want to practice anyway?"
+        let name = profile?.name ?? "Player 1"
+        return readyCount > 0 ? "Hi \(name)! \(readyCount) words ready today"
+                              : "Hi \(name)! All caught up — want to practice anyway?"
     }
 
     private func applyDemoArgsIfNeeded() {
@@ -225,16 +249,8 @@ struct HomeView: View {
     /// Games Spec §5 home redesign: a big primary "Play!" key (the guided
     /// session), the Games shelf below it, then "Practice Together" demoted
     /// to a small secondary button. Regular (iPad): Play! centered, shelf a
-    /// horizontal scroll of 6 tiles. Compact (iPhone): Play! full-width,
-    /// shelf a 2-row grid.
-    private var modeButtons: some View {
-        VStack(spacing: Theme.Metric.gap) {
-            playButton
-            gamesShelf
-            practiceSecondaryButton
-        }
-    }
-
+    /// single non-scrolling row that fits all 6 tiles. Compact (iPhone):
+    /// Play! full-width, shelf a 2-row grid.
     private var playButton: some View {
         Button {
             Feedback.fire(.keyTap)
@@ -254,6 +270,19 @@ struct HomeView: View {
                                     corner: Theme.Metric.corner))
         .disabled(!hasActiveWords)
         .opacity(hasActiveWords ? 1 : 0.6)
+        .scaleEffect(playBreathing ? 1.02 : 1.0)
+        .onAppear { startPlayBreathingIfNeeded() }
+        .onChange(of: hasActiveWords) { _, _ in startPlayBreathingIfNeeded() }
+    }
+
+    /// Gentle idle invite (CX pass): scale 1.0 -> 1.02 and back, 2.4s total
+    /// round trip, eased. Only while enabled; skipped entirely under Reduce
+    /// Motion.
+    private func startPlayBreathingIfNeeded() {
+        guard hasActiveWords, !reduceMotion else { playBreathing = false; return }
+        withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
+            playBreathing = true
+        }
     }
 
     /// Games Spec §5: 5 `GameCatalog` games (their art icons via
@@ -261,6 +290,14 @@ struct HomeView: View {
     /// Words as a 6th tile with its existing behavior. Tier shown ONLY as
     /// subtle 1-3 dots under each game tile (never on the Tricky tile, which
     /// isn't a game and has no tier).
+    ///
+    /// Layout fix (design review, g8-home-ipad.png): the old iPad layout put
+    /// all 6 tiles in a horizontal `ScrollView` sized narrower than their
+    /// total width, so the 6th (Tricky) tile clipped at the screen edge with
+    /// no visible affordance that more content existed. Fitting all 6 in a
+    /// plain non-scrolling row with slightly tighter tiles reads far better
+    /// on iPad's wide landscape canvas than a scroll a child has to discover.
+    /// iPhone keeps its existing 2-row grid (already fits without scrolling).
     @ViewBuilder
     private var gamesShelf: some View {
         if isCompact {
@@ -269,15 +306,12 @@ struct HomeView: View {
                 trickyTile
             }
         } else {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 18) {
-                    ForEach(GameCatalog.games) { gameTile($0) }
-                    trickyTile
-                }
-                .padding(.horizontal, 4)
-                .padding(.vertical, 2)
+            HStack(spacing: 14) {
+                ForEach(GameCatalog.games) { gameTile($0) }
+                trickyTile
             }
-            .frame(maxWidth: 620)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 2)
         }
     }
 
@@ -292,10 +326,10 @@ struct HomeView: View {
                         Image(entry.artIconKey)
                             .resizable()
                             .scaledToFit()
-                            .frame(width: isCompact ? 46 : 56, height: isCompact ? 46 : 56)
+                            .frame(width: isCompact ? 46 : 50, height: isCompact ? 46 : 50)
                     } else {
                         Image(systemName: entry.symbolName)
-                            .font(.system(size: isCompact ? 26 : 32, weight: .semibold))
+                            .font(.system(size: isCompact ? 26 : 30, weight: .semibold))
                             .foregroundStyle(Theme.Color.primary)
                     }
                 }
@@ -306,14 +340,17 @@ struct HomeView: View {
                     .minimumScaleFactor(0.8)
                 tierDots(for: entry.id)
             }
-            .frame(width: isCompact ? nil : 92)
+            .frame(width: isCompact ? nil : 84)
             .frame(maxWidth: isCompact ? .infinity : nil)
         }
-        .buttonStyle(PopButtonStyle())
+        .buttonStyle(ShelfTileButtonStyle())
     }
 
     /// Tricky Words as the shelf's 6th tile (Games Spec §5) — identical
     /// enable/disable rule and destination as the old standalone button.
+    /// Disabled state (design review): a plain dimmed star + a single-line
+    /// "All clear!" reads as "nothing to do here, nice job" instead of the
+    /// old "No tricky\nwords" wrapping awkwardly across two lines.
     private var trickyTile: some View {
         Button {
             Feedback.fire(.keyTap)
@@ -322,45 +359,53 @@ struct HomeView: View {
             VStack(spacing: 6) {
                 shelfIconPlate {
                     Image(systemName: "star.fill")
-                        .font(.system(size: isCompact ? 26 : 32, weight: .semibold))
+                        .font(.system(size: isCompact ? 26 : 30, weight: .semibold))
                         .foregroundStyle(trickyEnabled ? Theme.Color.accent : Theme.Color.gentle)
+                        .opacity(trickyEnabled ? 1 : 0.6)
                 }
-                Text(trickyEnabled ? "Tricky Words" : "No tricky\nwords")
+                Text(trickyEnabled ? "Tricky Words" : "All clear!")
                     .font(Theme.Font.label(isCompact ? 12 : 13))
                     .foregroundStyle(Theme.Color.ink)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
+                    .lineLimit(1)
                     .minimumScaleFactor(0.8)
                 // Empty spacer keeps this tile's label baseline aligned with
                 // the game tiles' tier-dots row below their title.
                 Color.clear.frame(height: 5)
             }
-            .frame(width: isCompact ? nil : 92)
+            .frame(width: isCompact ? nil : 84)
             .frame(maxWidth: isCompact ? .infinity : nil)
         }
-        .buttonStyle(PopButtonStyle())
+        .buttonStyle(ShelfTileButtonStyle())
         .disabled(!trickyEnabled)
         .opacity(trickyEnabled ? 1 : 0.55)
     }
 
     private func shelfIconPlate<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         ZStack { content() }
-            .frame(width: isCompact ? 72 : 88, height: isCompact ? 72 : 88)
+            .frame(width: isCompact ? 72 : 80, height: isCompact ? 72 : 80)
             .background(Theme.Color.surface)
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(Theme.Color.ink.opacity(0.08), lineWidth: 1))
     }
 
-    /// 1-3 subtle dots under a game tile showing `LearningService.gameTier`
-    /// (Games Spec §5: "tier shown ONLY as subtle dots").
+    /// 1-3 dots under a game tile showing `LearningService.gameTier` (Games
+    /// Spec §5: "tier shown ONLY as subtle dots" — subtle meaning "not a
+    /// number/badge", not "hard to see": filled + primary-tint for reached
+    /// tiers, a light outline ring for the rest, slightly larger than the
+    /// original low-opacity dots the design review flagged as too faint).
     private func tierDots(for id: GameID) -> some View {
         let tier = profile.map { service.gameTier(for: id, profile: $0) } ?? .t1
-        return HStack(spacing: 3) {
+        return HStack(spacing: 4) {
             ForEach(1...3, id: \.self) { i in
-                Circle()
-                    .fill(i <= tier.rawValue ? Theme.Color.primary.opacity(0.6) : Theme.Color.ink.opacity(0.12))
-                    .frame(width: 5, height: 5)
+                Group {
+                    if i <= tier.rawValue {
+                        Circle().fill(Theme.Color.primary)
+                    } else {
+                        Circle().strokeBorder(Theme.Color.ink.opacity(0.25), lineWidth: 1.3)
+                    }
+                }
+                .frame(width: 7, height: 7)
             }
         }
     }

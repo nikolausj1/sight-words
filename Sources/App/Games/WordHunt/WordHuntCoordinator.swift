@@ -223,7 +223,7 @@ final class WordHuntCoordinator: ObservableObject {
         resetIdleHintTimer()
         guard committed.count > 1 else {
             if let only = committed.first {
-                WordHuntLetterPlayer.shared.play(grid.letters[only.row][only.col])
+                GameAudio.shared.playLetter(grid.letters[only.row][only.col])
             }
             return
         }
@@ -278,13 +278,11 @@ final class WordHuntCoordinator: ObservableObject {
     /// from `foundWords`/scoring (which happen immediately) because a fast
     /// player can commit a second correct swipe while the first word's
     /// ~1.4s `SuccessMoment` is still on screen. `SuccessMomentModifier`
-    /// (GameKit, shared) mounts exactly one overlay per continuous
-    /// non-nil stretch of its bound word and clears itself via a ONE-SHOT
-    /// timer armed in its own `onAppear` -- overwriting `successWord` while
-    /// that timer is still pending (rather than queuing) would update the
-    /// visible text but never re-arm a new dismiss timer, permanently
-    /// stranding the overlay on screen. Queuing so only one word is ever
-    /// "in flight" at a time avoids that entirely.
+    /// (GameKit, shared) mounts exactly one overlay per continuous non-nil
+    /// stretch of its bound word and clears itself via a `.task(id:)` tied
+    /// to that word's identity, calling back through `onSettled`. Queuing so
+    /// only one word is ever "in flight" at a time keeps that straightforward
+    /// regardless of how fast words are found.
     private var successQueue: [String] = []
 
     private func markFound(_ word: String) {
@@ -305,30 +303,6 @@ final class WordHuntCoordinator: ObservableObject {
         let next = successQueue.removeFirst()
         pendingVoiceWord = next
         successWord = next
-        armSuccessMomentSafetyNet(for: next)
-    }
-
-    /// Defensive backstop: GameKit's shared `SuccessMomentModifier`
-    /// (`GameKit/SuccessMoment.swift`) is supposed to clear `successWord`
-    /// back to `nil` itself ~1.4s after it appears (an `onAppear`-scheduled
-    /// `DispatchQueue.main.asyncAfter`, driving `onSuccessMomentSettled()`
-    /// via the `onSettled` closure). Repro'd during rapid-fire testing
-    /// (`-demoWordHuntSolveAll`): that timer intermittently never fires,
-    /// permanently stranding the celebration overlay on screen -- root
-    /// cause not identified (worth flagging to whoever owns
-    /// `SuccessMoment.swift`; every other GameKit game shares this same
-    /// component and risk). Games Spec §1's "never blocks" bar means Word
-    /// Hunt cannot rely on that timer alone: if `successWord` is still
-    /// showing the same word well past the modifier's own ~1.4s window,
-    /// force-clear it and drive the settle path directly. No-ops
-    /// (harmlessly) in the normal case, since the real timer already set
-    /// `successWord` back to `nil` by then.
-    private func armSuccessMomentSafetyNet(for word: String) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) { [weak self] in
-            guard let self, self.successWord == word else { return }
-            self.successWord = nil
-            self.onSuccessMomentSettled()
-        }
     }
 
     /// Called by the hosting view's `.successMoment(word:onSettled:)` once

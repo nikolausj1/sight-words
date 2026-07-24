@@ -112,8 +112,10 @@ private struct MissingLetterTrayTileView: View {
             .onEnded { value in
                 if coordinator.draggingTile?.id == tile.id {
                     coordinator.dragEnded(tile: tile, location: value.location)
+                } else if coordinator.tier == .t1 {
+                    GameAudio.shared.playLetter(tile.letter)
                 } else {
-                    MissingLetterLetterPlayer.shared.play(tile.letter, tier: coordinator.tier)
+                    GameAudio.shared.playLetterSound(tile.letter)
                 }
             }
     }

@@ -141,7 +141,7 @@ private struct SpellingBuilderSlotView: View {
                     .transition(.scale.combined(with: .opacity))
                     .onTapGesture {
                         guard slot.locked else { return }
-                        SpellingBuilderLetterPlayer.shared.play(slot.letter)
+                        GameAudio.shared.playLetter(slot.letter)
                     }
             } else {
                 emptyOutline

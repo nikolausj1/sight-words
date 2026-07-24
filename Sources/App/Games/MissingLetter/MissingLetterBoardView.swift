@@ -63,7 +63,11 @@ private struct MissingLetterWordView: View {
                             .frame(width: 30)
                             .transition(.scale.combined(with: .opacity))
                             .onTapGesture {
-                                MissingLetterLetterPlayer.shared.play(letter, tier: coordinator.tier)
+                                if coordinator.tier == .t1 {
+                                    GameAudio.shared.playLetter(letter)
+                                } else {
+                                    GameAudio.shared.playLetterSound(letter)
+                                }
                             }
                     }
                 }

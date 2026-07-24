@@ -71,7 +71,7 @@ struct SayMatchRoundAView: View {
         guard successWord == nil, correctTileID == nil else { return }
         if tileID == round.targetID {
             correctTileID = tileID
-            SayMatchSFX.playWhoosh()
+            GameAudio.shared.playSFX("sfx_whoosh")
             driftedTileIDs = Set(round.tileIDs.filter { $0 != tileID })
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                 successWord = round.targetDisplay

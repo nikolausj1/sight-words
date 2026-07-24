@@ -33,11 +33,23 @@ struct SessionCompleteView: View {
 
             // Guided weave (Games Spec §2, WP-G8): a small celebratory line
             // when the session actually included its embedded game round
-            // (never shown when it was silently skipped -- empty pool).
+            // (never shown when it was silently skipped -- empty pool). The
+            // game's own shelf icon shows inline (CX pass) instead of a
+            // generic controller glyph, when its art exists.
             if coordinator.didPlayGuidedGameRound {
-                Label("+ a game round!", systemImage: "gamecontroller.fill")
-                    .font(Theme.Font.label(18))
-                    .foregroundStyle(Theme.Color.accent)
+                HStack(spacing: 8) {
+                    if let id = coordinator.guidedGameID, Art.exists("gameicon-\(id.rawValue)") {
+                        Image("gameicon-\(id.rawValue)")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 22, height: 22)
+                    } else {
+                        Image(systemName: "gamecontroller.fill")
+                    }
+                    Text("+ a game round!")
+                }
+                .font(Theme.Font.label(18))
+                .foregroundStyle(Theme.Color.accent)
             }
 
             if !coordinator.missedWords.isEmpty {

@@ -51,6 +51,46 @@ enum Theme {
         static let quick = Animation.easeOut(duration: 0.18)
         /// Session-end beats: bigger, bouncier.
         static let celebrate = Animation.spring(response: 0.5, dampingFraction: 0.6)
+
+        // MARK: GameKit tokens
+        //
+        // Defined here for every GameKit game to adopt (Games Spec §1's
+        // shared feel), but deliberately NOT retro-applied inside any
+        // individual game folder as part of this pass -- each game already
+        // has its own inline `.spring(...)`/`.easeInOut(duration:)` literals
+        // doing the same jobs (tile lift-on-touch, card flips, drift-off
+        // wrong answers, ~0.9s auto-advance beats, bridge transitions); a
+        // follow-up pass swaps those call sites over to these tokens.
+
+        /// Quick spring for a tile lifting under touch (Games Spec §1's
+        /// lift-on-touch tile feel -- see `GameTileStyle`'s press/lift
+        /// states). Snappier than `snappy` -- a per-touch response, not a
+        /// round-level correctness beat.
+        static let tileLift = Animation.spring(response: 0.22, dampingFraction: 0.65)
+
+        /// A card's face-down/face-up flip (Memory Match's `MemoryCardView`,
+        /// Spelling Builder's T3 look-say-cover-check memory mode).
+        static let cardFlip = Animation.easeInOut(duration: 0.35)
+
+        /// A tile/answer drifting away after it's been ruled out (e.g. Say &
+        /// Match's wrong tiles drifting off-screen once the correct one is
+        /// tapped).
+        static let drift = Animation.easeIn(duration: 0.5)
+
+        /// Standard pacing beat for auto-advance moments between rounds/
+        /// steps (flip-back after a mismatch, glow pulses, etc.) -- a plain
+        /// `TimeInterval`, not an `Animation`, so it works equally for
+        /// `withAnimation(.easeInOut(duration: Theme.Motion.beat))` and for
+        /// `DispatchQueue.main.asyncAfter(deadline: .now() + Theme.Motion.beat)`.
+        /// ~0.9s is already the de facto pacing GameKit games use ad hoc for
+        /// this beat (e.g. Memory's mismatch flip-back, the idle-hint glow
+        /// pulse); this just names it.
+        static let beat: TimeInterval = 0.9
+
+        /// A screen/section bridging transition -- e.g. the guided seam's
+        /// "Bonus round!" hand-off from the cards portion into an embedded
+        /// game round (Games Spec §2, WP-G8 CX pass).
+        static let bridge = Animation.easeInOut(duration: 0.6)
     }
 }
 

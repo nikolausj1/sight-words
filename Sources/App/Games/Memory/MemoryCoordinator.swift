@@ -230,7 +230,7 @@ final class MemoryCoordinator: ObservableObject {
         clearingBoard = true
         let report = RoundReport(wrongAttempts: mismatchesThisRound, timeoutHints: 0)
         service.recordGameRound(for: .memory, profile: profile, report: report)
-        MemorySFX.playBloop()
+        GameAudio.shared.playSFX("sfx_bloop")
         let token = roundToken
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
             guard let self, self.roundToken == token else { return }

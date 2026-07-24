@@ -1,24 +1,4 @@
 import SwiftUI
-import AVFoundation
-
-/// Tiny local audio player for single-letter tap-to-hear (Games Spec §1:
-/// "tapping any letter tile says the letter name"). Deliberately
-/// self-contained here rather than adding a new method to the shared
-/// `SpeechService` -- this game's scope is its own folder only, and the
-/// `letter-<x>.m4a` clips (Games Spec §4) already exist in the bundle with
-/// no player wired up yet.
-@MainActor
-final class WordHuntLetterPlayer {
-    static let shared = WordHuntLetterPlayer()
-    private var player: AVAudioPlayer?
-
-    func play(_ letter: Character) {
-        guard let url = Bundle.main.url(forResource: "letter-\(String(letter).lowercased())", withExtension: "m4a") else { return }
-        player = try? AVAudioPlayer(contentsOf: url)
-        player?.prepareToPlay()
-        player?.play()
-    }
-}
 
 /// The grid card (Games Spec §3.1): swipe-select with a live highlight
 /// ribbon, elastic neighbor-letter shift + lift under touch, persistent
