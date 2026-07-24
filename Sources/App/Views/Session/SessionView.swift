@@ -15,7 +15,12 @@ struct SessionView: View {
 
     var body: some View {
         ZStack {
-            WarmBackdrop()
+            // Design Direction §8/§4 (WP-E4): the same day/evening/night
+            // paper-scene backdrop Home and every GameKit game show, instead
+            // of the flat `WarmBackdrop` gradient -- covers `SessionCompleteView`
+            // too, since it renders inside `content` with no background of
+            // its own.
+            SceneBackdrop()
             content
         }
         .onAppear {

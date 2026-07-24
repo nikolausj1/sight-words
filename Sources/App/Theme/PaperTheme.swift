@@ -1,5 +1,29 @@
 import SwiftUI
 
+// MARK: - Color mixing (night families only)
+
+private extension Color {
+    /// Linear RGB blend toward `other` by `amount` (0 = self, 1 = other) --
+    /// used only by `PaperTheme.Family.nighted()` below. `Color.shaded(by:)`
+    /// (`Components.swift`) already covers "toward white/black"; this is the
+    /// "toward an arbitrary hue" counterpart night mode needs and nothing
+    /// else currently does, which is why it lives here rather than beside
+    /// `shaded(by:)`.
+    func mixed(with other: Color, amount: Double) -> Color {
+        #if canImport(UIKit)
+        var r1: CGFloat = 0, g1: CGFloat = 0, b1: CGFloat = 0, a1: CGFloat = 0
+        var r2: CGFloat = 0, g2: CGFloat = 0, b2: CGFloat = 0, a2: CGFloat = 0
+        guard UIColor(self).getRed(&r1, green: &g1, blue: &b1, alpha: &a1),
+              UIColor(other).getRed(&r2, green: &g2, blue: &b2, alpha: &a2) else { return self }
+        let t = CGFloat(min(max(amount, 0), 1))
+        return Color(red: r1 + (r2 - r1) * t, green: g1 + (g2 - g1) * t, blue: b1 + (b2 - b1) * t)
+            .opacity(a1)
+        #else
+        return self
+        #endif
+    }
+}
+
 // MARK: - PaperBlobShape
 
 /// The core paper-cut primitive (Design Direction §1): an organic rounded
@@ -137,7 +161,51 @@ enum PaperTheme {
             self.accent = base.shaded(by: -0.06)
             self.seed = seed
         }
+
+        /// Direct-tone initializer, used only by `nighted()` below: night
+        /// tones are computed by blending an already-derived family's own
+        /// tones toward `PaperTheme.nightAnchor`, not by re-deriving a fresh
+        /// family from one base hue, so this bypasses `init(base:seed:)`
+        /// entirely rather than fighting its derivation math.
+        fileprivate init(ring2: Color, ring1: Color, surface: Color, accent: Color, seed: UInt64) {
+            self.ring2 = ring2
+            self.ring1 = ring1
+            self.surface = surface
+            self.accent = accent
+            self.seed = seed
+        }
+
+        /// Night-mode variant (Design Direction §8, sample 4's deep-teal/navy
+        /// rings): every tone blended toward `PaperTheme.nightAnchor` and
+        /// darkened a step, keeping each family's OWN hue identity (wordHunt
+        /// still reads greenish, sayMatch blueish, ...) rather than
+        /// flattening every accent family to one identical night color.
+        /// `surface` -- the near-white tone every `PaperWindow`'s innermost
+        /// ring and every paper chip's cream fill ultimately derive from --
+        /// blends the hardest and darkens the most, so it lands on a warm
+        /// charcoal rather than anywhere near pure white (§8: "no pure-white
+        /// fills at night").
+        func nighted() -> Family {
+            Family(
+                ring2: ring2.mixed(with: PaperTheme.nightAnchor, amount: 0.55).shaded(by: -0.10),
+                ring1: ring1.mixed(with: PaperTheme.nightAnchor, amount: 0.55).shaded(by: -0.05),
+                surface: surface.mixed(with: PaperTheme.nightAnchor, amount: 0.72).shaded(by: -0.30),
+                accent: accent.mixed(with: PaperTheme.nightAnchor, amount: 0.35),
+                seed: seed
+            )
+        }
+
+        /// `nighted()` when `night` is true, unchanged otherwise -- the one
+        /// call site callers actually use, so "pick the family, then ask if
+        /// it should be nighted" is a single expression rather than a
+        /// caller-side `if`/ternary repeated everywhere a family is resolved.
+        func adaptive(night: Bool) -> Family { night ? nighted() : self }
     }
+
+    /// The fixed deep-teal/navy anchor every family's night variant blends
+    /// toward (Design Direction §8, sample 4's night reference: deep teal
+    /// rings around a pale moon).
+    fileprivate static let nightAnchor = Color(red: 0.05, green: 0.20, blue: 0.24)
 
     // MARK: Per-game families (§3)
 

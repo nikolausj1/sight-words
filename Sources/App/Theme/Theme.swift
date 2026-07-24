@@ -113,6 +113,53 @@ struct WarmBackdrop: View {
     }
 }
 
+/// Full-bleed day/evening/night paper scene backdrop (Design Direction §4/§8):
+/// THE shared backdrop for Home, every GameKit game, and both session
+/// screens -- replaces the old flat `WarmBackdrop` gradient and (in
+/// `GameScaffold`) the single static `game-backdrop` art wherever the real
+/// `paper-scene-*` art exists, with a 1s crossfade whenever
+/// `TimeOfDayService`'s mode changes (auto clock tick, or a parent's
+/// Auto/Day/Night override). Falls back to the old `WarmBackdrop` wholesale
+/// if the day art is missing -- placeholder-first, same convention as every
+/// other `Art.exists` gate in this app -- so a build that predates this art
+/// still renders something instead of a blank screen.
+struct SceneBackdrop: View {
+    @ObservedObject private var timeOfDay = TimeOfDayService.shared
+
+    var body: some View {
+        Group {
+            if Art.exists("paper-scene-day") {
+                ZStack {
+                    scene("paper-scene-day").opacity(timeOfDay.mode == .day ? 1 : 0)
+                    scene("paper-scene-evening").opacity(timeOfDay.mode == .evening ? 1 : 0)
+                    scene("paper-scene-night").opacity(timeOfDay.mode == .night ? 1 : 0)
+                }
+                .animation(.easeInOut(duration: 1.0), value: timeOfDay.mode)
+            } else {
+                WarmBackdrop()
+            }
+        }
+        .ignoresSafeArea()
+    }
+
+    /// Same "read the real proposed size, force the image to it" fix
+    /// `GameScaffold`'s old `game-backdrop` rendering already had to apply
+    /// (see its doc comment): a bare `.scaledToFill()` with no numeric
+    /// `.frame()` reports the image's own raw pixel size upward instead of
+    /// filling whatever this view was actually given, which on a narrower
+    /// iPhone would inflate this whole backdrop (and everything stacked
+    /// above it) far past the real screen bounds.
+    private func scene(_ name: String) -> some View {
+        GeometryReader { geo in
+            Image(name)
+                .resizable()
+                .scaledToFill()
+                .frame(width: geo.size.width, height: geo.size.height)
+                .clipped()
+        }
+    }
+}
+
 extension View {
     /// Standard card surface used across the app: flat white with a hairline
     /// border (no drop shadow — not part of the design language).

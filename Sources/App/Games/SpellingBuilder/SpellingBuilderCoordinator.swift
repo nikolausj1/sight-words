@@ -27,6 +27,11 @@ final class SpellingBuilderCoordinator: ObservableObject {
     @Published private(set) var currentWordIndex = 0
     @Published private(set) var showRoundCelebration = false
 
+    /// "One more round?" (Design Direction §6) -- see
+    /// `WordHuntCoordinator.setsPlayedThisSitting`'s doc comment.
+    @Published private(set) var setsPlayedThisSitting = 1
+    var canPlayAgain: Bool { setsPlayedThisSitting < 3 }
+
     @Published private(set) var slots: [SpellingBuilderSlot] = []
     @Published private(set) var tray: [SpellingBuilderTile] = []
     @Published private(set) var currentInstruction: GameInstruction = GameInstruction(.sayThenBuild)
@@ -78,6 +83,9 @@ final class SpellingBuilderCoordinator: ObservableObject {
     /// Fixed for a demo session (`-demoGame spellingBuilder t2`), same
     /// contract as `WordHuntCoordinator.demoTierOverride`.
     private let demoTierOverride: GameTier?
+    /// Tricky Words rotation mode (Design Direction §6) -- see
+    /// `WordHuntCoordinator.trickyOnly`'s doc comment.
+    private let trickyOnly: Bool
 
     // MARK: Set/word bookkeeping
 
@@ -125,13 +133,14 @@ final class SpellingBuilderCoordinator: ObservableObject {
 
     // MARK: Init
 
-    init(profile: Profile, service: LearningService, tierOverride: GameTier? = nil,
+    init(profile: Profile, service: LearningService, tierOverride: GameTier? = nil, trickyOnly: Bool = false,
          voiceCheck: VoiceCheckService = .shared, speech: SpeechService = .shared) {
         self.profile = profile
         self.service = service
         self.voiceCheck = voiceCheck
         self.speech = speech
         self.demoTierOverride = tierOverride
+        self.trickyOnly = trickyOnly
         let resolvedTier = tierOverride ?? service.gameTier(for: .spellingBuilder, profile: profile)
         self.tier = resolvedTier
         self.activeConfig = spellingBuilderConfig(for: resolvedTier)
@@ -152,7 +161,7 @@ final class SpellingBuilderCoordinator: ObservableObject {
         #if DEBUG
         Self.seedDemoExposureIfNeeded(service: service, profile: profile)
         #endif
-        let pool = service.pool(for: profile)
+        let pool = Self.trickyFiltered(service.pool(for: profile), trickyOnly: trickyOnly)
         // Games Spec §2 shape constraint applied at this game's own call
         // site, same pattern as `MissingLetterCoordinator.pickWords` --
         // `GameWordConstraints` only carries a max length, so the min-length
@@ -165,6 +174,28 @@ final class SpellingBuilderCoordinator: ObservableObject {
         words = picked.enumerated().map { index, snapshot in
             SpellingBuilderWord(index: index, engineID: snapshot.id, text: service.displayText(forID: snapshot.id))
         }
+    }
+
+    /// "One more round?" restart hook (Design Direction §6) -- see
+    /// `WordHuntCoordinator.startNewSet()`'s doc comment.
+    func startNewSet() {
+        guard canPlayAgain else { return }
+        setsPlayedThisSitting += 1
+        showRoundCelebration = false
+        buildWordSet()
+        if !words.isEmpty {
+            startWord(index: 0, speak: true)
+        } else {
+            showRoundCelebration = true
+        }
+    }
+
+    /// Tricky Words rotation mode (Design Direction §6) -- see
+    /// `WordHuntCoordinator.trickyFiltered(_:trickyOnly:)`'s doc comment.
+    private static func trickyFiltered(_ pool: [WordSnapshot], trickyOnly: Bool) -> [WordSnapshot] {
+        guard trickyOnly else { return pool }
+        let filtered = pool.filter { $0.needsReview || $0.state == .learning }
+        return filtered.isEmpty ? pool : filtered
     }
 
     // MARK: Word lifecycle
@@ -271,7 +302,10 @@ final class SpellingBuilderCoordinator: ObservableObject {
     }
 
     /// Games Spec §3.5: "silence 6s -> phrase-show-me + word spoken + unlock
-    /// (counts timeoutHint)".
+    /// (counts timeoutHint)". Speech-length-aware pacing (Design Direction
+    /// §6): waits for that "show me, <word>" line to actually finish
+    /// (`SpeechService.speakAndWait`, floored at `Theme.Motion.beat`) before
+    /// unlocking the tray, replacing a fixed 1.6s `Task.sleep` guess.
     private func armVoiceSilenceTimer(token: UUID) {
         voiceSilenceTimer?.cancel()
         let item = DispatchWorkItem { [weak self] in
@@ -280,9 +314,10 @@ final class SpellingBuilderCoordinator: ObservableObject {
             self.timeoutHints += 1
             self.voiceListening = false
             let word = self.words[self.currentWordIndex].text
-            self.speech.speak(segments: [.phrase(.showMe), .pause(0.2), .word(word)])
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { [weak self] in
-                guard let self, self.wordToken == token else { return }
+            Task { [weak self] in
+                guard let self else { return }
+                await self.speech.speakAndWait(segments: [.phrase(.showMe), .pause(0.2), .word(word)])
+                guard self.wordToken == token else { return }
                 self.unlockTiles(sparkle: false, token: token)
             }
         }
@@ -414,16 +449,21 @@ final class SpellingBuilderCoordinator: ObservableObject {
         let word = words[currentWordIndex]
         service.recordGameExposure(word: word.engineID, profile: profile)
         withAnimation(Theme.Motion.celebrate) { isFused = true }
-        speech.speakWord(word.text)
 
+        // Speech-length-aware pacing (Design Direction §6): hold the fused
+        // pill on screen for exactly as long as the word takes to say
+        // (floored at `Theme.Motion.beat`) instead of a fixed 1.4s guess,
+        // then advance -- `fuseAdvanceTimer` is still cancelled from
+        // `cancelWordTimers()` on a word change/teardown, even though the
+        // wait itself now lives in this `Task` rather than a `DispatchWorkItem`.
         let token = wordToken
         fuseAdvanceTimer?.cancel()
-        let item = DispatchWorkItem { [weak self] in
-            guard let self, self.wordToken == token else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            await self.speech.speakWordAndWait(word.text)
+            guard self.wordToken == token else { return }
             self.advance()
         }
-        fuseAdvanceTimer = item
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4, execute: item)
     }
 
     private func advance() {

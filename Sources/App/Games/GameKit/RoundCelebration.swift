@@ -8,8 +8,24 @@ import SwiftUI
 /// bias to `gameID`'s own accent family (Design Direction §3/§6) instead of
 /// the old fixed gold/blue palette, so the celebration still reads as part
 /// of the game the child was just playing.
+///
+/// "One more round?" (Design Direction §6): an "Again!" `PaperKeyButton`
+/// (primary, game accent) sits beside "Done" (hero) whenever `canPlayAgain`
+/// is true -- the calling game passes that in from its own coordinator's
+/// 3-sets-per-sitting cap (each coordinator's `startNewSet()`/`canPlayAgain`
+/// is this celebration's "restart hook"). Once the cap is hit, `canPlayAgain`
+/// is false: no Again button, and the appear-speech ends on `phrase-all-done`
+/// instead of `phrase-play-again`.
 struct RoundCelebration: View {
     let gameID: GameID
+    /// True iff this sitting hasn't yet hit the 3-set cap -- controls both
+    /// whether "Again!" renders and which closing phrase plays.
+    var canPlayAgain: Bool = false
+    /// Starts a fresh round set on the SAME game screen (no dismiss) --
+    /// nil-safe no-op default so existing call sites that haven't wired a
+    /// restart hook yet still compile; every real game passes its
+    /// coordinator's `startNewSet()`.
+    var onAgain: () -> Void = {}
     let onNext: () -> Void
 
     @State private var praise: PhraseClip = RoundCelebration.nextPraise()
@@ -50,19 +66,36 @@ struct RoundCelebration: View {
                     .minimumScaleFactor(0.5)
                     .padding(.horizontal, Theme.Metric.pad)
 
-                Button(action: onNext) {
-                    Text("Next")
-                        .font(Theme.Font.label(22))
+                HStack(spacing: Theme.Metric.gap) {
+                    if canPlayAgain {
+                        Button(action: onAgain) {
+                            Text("Again!")
+                                .font(Theme.Font.label(20))
+                        }
+                        .buttonStyle(PaperKeyButton(fill: family.accent, size: .primary))
+                        .accessibilityLabel("Play again")
+                    }
+
+                    Button(action: onNext) {
+                        Text("Done")
+                            .font(Theme.Font.label(22))
+                    }
+                    .buttonStyle(PaperKeyButton(fill: family.accent, size: .hero))
+                    .frame(width: 200)
+                    .scaleEffect(pulse && !reduceMotion ? 1.06 : 1.0)
+                    .animation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true), value: pulse)
+                    .accessibilityLabel("Done")
                 }
-                .buttonStyle(PaperKeyButton(fill: family.accent, size: .hero))
-                .frame(width: 200)
-                .scaleEffect(pulse && !reduceMotion ? 1.06 : 1.0)
-                .animation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true), value: pulse)
-                .accessibilityLabel("Next")
             }
         }
         .onAppear {
-            SpeechService.shared.speak(segments: [.phrase(praise)])
+            // Praise line, then a short beat, then the play-again invite (or
+            // the gentle close-out once the sitting's 3-set cap is hit) --
+            // one chained line rather than two separate `speak` calls so it
+            // reads as a single thought.
+            SpeechService.shared.speak(segments: [
+                .phrase(praise), .pause(0.3), .phrase(canPlayAgain ? .playAgain : .allDone),
+            ])
             pulse = true
         }
     }

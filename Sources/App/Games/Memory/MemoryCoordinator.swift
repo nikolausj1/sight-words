@@ -36,6 +36,12 @@ final class MemoryCoordinator: ObservableObject {
     let totalRounds = 2
     @Published private(set) var showRoundCelebration = false
 
+    /// "One more round?" (Design Direction §6) -- see
+    /// `WordHuntCoordinator.setsPlayedThisSitting`'s doc comment for the
+    /// exact contract every GameKit coordinator shares.
+    @Published private(set) var setsPlayedThisSitting = 1
+    var canPlayAgain: Bool { setsPlayedThisSitting < 3 }
+
     // MARK: Published bank-beat (🎤 "Say it to bank it!") state
 
     @Published private(set) var bankingPairID: String?
@@ -62,6 +68,9 @@ final class MemoryCoordinator: ObservableObject {
     /// stays at the requested tier instead of re-reading (and potentially
     /// promoting/demoting) the profile's real ladder.
     private let demoTierOverride: GameTier?
+    /// Tricky Words rotation mode (Design Direction §6) -- see
+    /// `WordHuntCoordinator.trickyOnly`'s doc comment.
+    private let trickyOnly: Bool
 
     // MARK: Round bookkeeping
 
@@ -100,13 +109,14 @@ final class MemoryCoordinator: ObservableObject {
 
     // MARK: Init
 
-    init(profile: Profile, service: LearningService, tierOverride: GameTier? = nil,
+    init(profile: Profile, service: LearningService, tierOverride: GameTier? = nil, trickyOnly: Bool = false,
          voiceCheck: VoiceCheckService = .shared, speech: SpeechService = .shared) {
         self.profile = profile
         self.service = service
         self.voiceCheck = voiceCheck
         self.speech = speech
         self.demoTierOverride = tierOverride
+        self.trickyOnly = trickyOnly
         let resolvedTier = tierOverride ?? service.gameTier(for: .memory, profile: profile)
         self.tier = resolvedTier
         startRound(speakOpening: false)
@@ -138,7 +148,7 @@ final class MemoryCoordinator: ObservableObject {
         tier = resolvedTier
         let config = memoryConfig(for: resolvedTier)
 
-        let pool = service.pool(for: profile)
+        let pool = Self.trickyFiltered(service.pool(for: profile), trickyOnly: trickyOnly)
         var pickRng: RandomNumberGenerator = SystemRandomNumberGenerator()
         let picked = pickGameWords(pool: pool, count: config.pairCount, rng: &pickRng)
         let words = Self.padWithReuse(picked.map { (id: $0.id, display: service.displayText(forID: $0.id)) },
@@ -153,6 +163,24 @@ final class MemoryCoordinator: ObservableObject {
         #if DEBUG
         maybeSeedDemoExposureIfNeeded()
         #endif
+    }
+
+    /// "One more round?" restart hook (Design Direction §6) -- see
+    /// `WordHuntCoordinator.startNewSet()`'s doc comment.
+    func startNewSet() {
+        guard canPlayAgain else { return }
+        setsPlayedThisSitting += 1
+        currentRoundIndex = 0
+        showRoundCelebration = false
+        startRound()
+    }
+
+    /// Tricky Words rotation mode (Design Direction §6) -- see
+    /// `WordHuntCoordinator.trickyFiltered(_:trickyOnly:)`'s doc comment.
+    private static func trickyFiltered(_ pool: [WordSnapshot], trickyOnly: Bool) -> [WordSnapshot] {
+        guard trickyOnly else { return pool }
+        let filtered = pool.filter { $0.needsReview || $0.state == .learning }
+        return filtered.isEmpty ? pool : filtered
     }
 
     // MARK: Flip / compare / match

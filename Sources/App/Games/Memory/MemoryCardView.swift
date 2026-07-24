@@ -103,7 +103,7 @@ struct MemoryCardView: View {
         Group {
             switch card.face {
             case .word:
-                Text(card.displayText.capitalized)
+                Text(card.displayText)
                     .font(Theme.Font.display(26))
                     .foregroundStyle(Theme.Color.ink)
                     .minimumScaleFactor(0.4)

@@ -97,7 +97,7 @@ struct MemoryBankBeatOverlay: View {
                         Text("Say it to bank it!")
                             .font(Theme.Font.label(16))
                             .foregroundStyle(.white)
-                        Text(word.capitalized)
+                        Text(word)
                             .font(Theme.Font.display(22))
                             .foregroundStyle(.white)
                             .minimumScaleFactor(0.6)

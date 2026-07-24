@@ -7,6 +7,11 @@ import SwiftData
 /// active profile from the environment itself, same as every other
 /// session-launching view in this app.
 struct WordHuntGameView: View {
+    /// Tricky Words rotation mode (Design Direction §6): defaults to false so
+    /// every existing call site (`GameCatalog`'s shelf destination) is
+    /// unaffected -- only `TrickyGamesRotationView` passes `true`.
+    var trickyOnly: Bool = false
+
     @Environment(\.modelContext) private var context
     @Query(filter: #Predicate<Profile> { $0.isActive }) private var activeProfiles: [Profile]
     @Query(sort: \Profile.createdAt) private var allProfiles: [Profile]
@@ -15,7 +20,7 @@ struct WordHuntGameView: View {
 
     var body: some View {
         if let profile {
-            WordHuntGameContentView(profile: profile, context: context)
+            WordHuntGameContentView(profile: profile, context: context, trickyOnly: trickyOnly)
         } else {
             // Defensive only: every real path into a `GameEntry.destination`
             // (the guided session, the Games shelf) already requires an
@@ -36,14 +41,14 @@ struct WordHuntGameContentView: View {
     @Environment(\.horizontalSizeClass) private var hSizeClass
     private var isCompact: Bool { hSizeClass == .compact }
 
-    init(profile: Profile, context: ModelContext) {
+    init(profile: Profile, context: ModelContext, trickyOnly: Bool = false) {
         let service = LearningService(context: context)
         var tierOverride: GameTier?
         #if DEBUG
         tierOverride = Self.demoTierOverride()
         #endif
         _coordinator = StateObject(wrappedValue: WordHuntCoordinator(profile: profile, service: service,
-                                                                      tierOverride: tierOverride))
+                                                                      tierOverride: tierOverride, trickyOnly: trickyOnly))
     }
 
     var body: some View {
@@ -60,7 +65,8 @@ struct WordHuntGameContentView: View {
         .overlay { WordHuntVoiceBeatOverlay(coordinator: coordinator) }
         .overlay {
             if coordinator.showRoundCelebration {
-                RoundCelebration(gameID: .wordHunt, onNext: { dismiss() })
+                RoundCelebration(gameID: .wordHunt, canPlayAgain: coordinator.canPlayAgain,
+                                  onAgain: { coordinator.startNewSet() }, onNext: { dismiss() })
             }
         }
         .onDisappear { coordinator.tearDown() }
@@ -70,29 +76,54 @@ struct WordHuntGameContentView: View {
         Binding(get: { coordinator.successWord }, set: { coordinator.successWord = $0 })
     }
 
-    /// iPad landscape (regular): grid left, word list right (Games Spec
-    /// §3.1: "3-5 list words shown right panel"). iPhone compact: grid on
-    /// top, list below (this worker's brief for functional-not-broken
-    /// compact layout) -- the grid still scales via `WordHuntBoardView`'s
-    /// own `GeometryReader`.
+    /// iPad landscape (regular): grid centered left, word list right in its
+    /// OWN small `PaperWindow` -- fixes the lead-review flag on
+    /// `e2-scaffold.png` (the list used to render as bare white rows
+    /// floating past the board window's edge, over open backdrop, which
+    /// Design Direction §4 explicitly calls out as banned: "word lists/trays
+    /// sit in their own smaller PaperWindows"). Both windows nest inside
+    /// `GameScaffold`'s own outer board `PaperWindow`, so the whole board
+    /// area still reads as one continuous stack of cut paper. iPhone
+    /// compact: grid on top, list window below (this worker's brief for
+    /// functional-not-broken compact layout) -- the grid still scales via
+    /// `WordHuntBoardView`'s own `GeometryReader`.
     @ViewBuilder
     private var boardContent: some View {
         if isCompact {
             VStack(spacing: Theme.Metric.gap) {
                 WordHuntBoardView(coordinator: coordinator)
                     .aspectRatio(1, contentMode: .fit)
-                ScrollView {
-                    WordHuntWordListView(coordinator: coordinator)
-                }
+                wordListWindow
+                    .frame(maxHeight: 170)
             }
         } else {
             HStack(spacing: Theme.Metric.gap) {
+                Spacer(minLength: 0)
                 WordHuntBoardView(coordinator: coordinator)
                     .aspectRatio(1, contentMode: .fit)
-                ScrollView {
-                    WordHuntWordListView(coordinator: coordinator)
+                Spacer(minLength: 0)
+                VStack {
+                    Spacer(minLength: 0)
+                    wordListWindow
+                        .frame(width: 200, height: 280)
+                    Spacer(minLength: 0)
                 }
-                .frame(width: 240)
+                .padding(.trailing, Theme.Metric.gap)
+            }
+        }
+    }
+
+    /// The word list's own small paper container (Design Direction §1/§4):
+    /// same `leafGreen` accent family as the board window, offset-seeded so
+    /// its blob outline doesn't trace identically to the outer window's.
+    /// Fixed (not stretched to the full board height) and vertically
+    /// centered by its caller -- letting it stretch as tall/narrow as the
+    /// square board made its own organic blob wobble badly enough to visibly
+    /// cross the outer board window's own edge near the top/bottom corners.
+    private var wordListWindow: some View {
+        PaperWindow(family: PaperTheme.leafGreen, seedOffset: 7) {
+            ScrollView {
+                WordHuntWordListView(coordinator: coordinator)
             }
         }
     }

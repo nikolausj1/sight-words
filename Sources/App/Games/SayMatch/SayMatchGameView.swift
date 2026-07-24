@@ -8,6 +8,10 @@ import SwiftData
 /// `LearningService`/`SayMatchModel`, exactly like every other
 /// session-launching root view in the app.
 struct SayMatchGameView: View {
+    /// Tricky Words rotation mode (Design Direction §6) -- see
+    /// `WordHuntGameView.trickyOnly`'s doc comment.
+    var trickyOnly: Bool = false
+
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @State private var model: SayMatchModel?
@@ -26,7 +30,7 @@ struct SayMatchGameView: View {
         guard model == nil else { return }
         let service = LearningService(context: modelContext)
         let profile = service.activeProfile()
-        model = SayMatchModel(profile: profile, service: service)
+        model = SayMatchModel(profile: profile, service: service, trickyOnly: trickyOnly)
     }
 }
 
@@ -47,7 +51,8 @@ private struct SayMatchContentView: View {
                 roundContent
             }
             if model.isComplete {
-                RoundCelebration(gameID: .sayMatch, onNext: onExit)
+                RoundCelebration(gameID: .sayMatch, canPlayAgain: model.canPlayAgain,
+                                  onAgain: { model.startNewSet() }, onNext: onExit)
                     .transition(.opacity)
                     .zIndex(10)
             }

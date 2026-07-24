@@ -24,6 +24,14 @@ final class Profile {
     var micModeRaw: String = "auto"
     var sessionSize: Int = 12
 
+    /// Additive field (lightweight SwiftData migration): the parent's
+    /// Design Direction §8 night-mode override -- `TimeOfDayService.Override`
+    /// raw value ("auto" | "day" | "night"), read/written by
+    /// `ParentAreaView`'s Settings card. Existing rows read "auto" (clock-
+    /// driven, the default), matching every other freshly-added *Raw field
+    /// in this model (see `micModeRaw` just above).
+    var timeOfDayOverrideRaw: String = "auto"
+
     /// Control style ("parent" | "solo") of the last Practice Together/On My Own
     /// session — Tricky Words (§6.3) has no controls of its own and mirrors this.
     var lastUsedControlStyle: String = "parent"

@@ -7,6 +7,10 @@ import SwiftData
 /// the active profile from the environment itself, same as every other
 /// session-launching view in this app (mirrors `WordHuntGameView`).
 struct MissingLetterGameView: View {
+    /// Tricky Words rotation mode (Design Direction §6) -- see
+    /// `WordHuntGameView.trickyOnly`'s doc comment.
+    var trickyOnly: Bool = false
+
     @Environment(\.modelContext) private var context
     @Query(filter: #Predicate<Profile> { $0.isActive }) private var activeProfiles: [Profile]
     @Query(sort: \Profile.createdAt) private var allProfiles: [Profile]
@@ -15,7 +19,7 @@ struct MissingLetterGameView: View {
 
     var body: some View {
         if let profile {
-            MissingLetterGameContentView(profile: profile, context: context)
+            MissingLetterGameContentView(profile: profile, context: context, trickyOnly: trickyOnly)
         } else {
             // Defensive only -- every real path into a `GameEntry.destination`
             // already requires an onboarded active profile to exist first.
@@ -34,14 +38,14 @@ struct MissingLetterGameContentView: View {
     @StateObject private var coordinator: MissingLetterCoordinator
     @Environment(\.dismiss) private var dismiss
 
-    init(profile: Profile, context: ModelContext) {
+    init(profile: Profile, context: ModelContext, trickyOnly: Bool = false) {
         let service = LearningService(context: context)
         var tierOverride: GameTier?
         #if DEBUG
         tierOverride = Self.demoTierOverride()
         #endif
         _coordinator = StateObject(wrappedValue: MissingLetterCoordinator(profile: profile, service: service,
-                                                                          tierOverride: tierOverride))
+                                                                          tierOverride: tierOverride, trickyOnly: trickyOnly))
     }
 
     var body: some View {
@@ -61,9 +65,11 @@ struct MissingLetterGameContentView: View {
         ) {
             boardContent
         }
+        .overlay { MissingLetterVoiceBeatOverlay(coordinator: coordinator) }
         .overlay {
             if coordinator.showRoundCelebration {
-                RoundCelebration(gameID: .missingLetter, onNext: { dismiss() })
+                RoundCelebration(gameID: .missingLetter, canPlayAgain: coordinator.canPlayAgain,
+                                  onAgain: { coordinator.startNewSet() }, onNext: { dismiss() })
             }
         }
         .onDisappear { coordinator.tearDown() }

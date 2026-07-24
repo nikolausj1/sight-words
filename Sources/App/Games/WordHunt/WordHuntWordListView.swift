@@ -43,7 +43,7 @@ private struct WordHuntListRow: View {
             HStack(spacing: 8) {
                 Image(systemName: found ? "checkmark.circle.fill" : "circle")
                     .foregroundStyle(found ? Theme.Color.correct : Theme.Color.inkSoft.opacity(0.4))
-                Text(word.capitalized)
+                Text(word)
                     .font(Theme.Font.label(18))
                     .strikethrough(found)
                     .foregroundStyle(found ? Theme.Color.inkSoft : Theme.Color.ink)

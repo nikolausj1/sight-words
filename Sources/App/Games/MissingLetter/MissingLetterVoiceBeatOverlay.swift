@@ -1,13 +1,13 @@
 import SwiftUI
 
-/// The 🎤 "Now you say it!" beat (Games Spec §3.1): shown after a found
-/// word's `SuccessMoment` settles, only when voice-check is eligible
-/// (`WordHuntCoordinator` skips straight past this overlay otherwise). Purely
-/// presentational -- all of the listening/timeout/self-hearing-guard logic
-/// lives in the coordinator; this view just reflects `voiceBeatWord`/
-/// `voiceListening`/`voiceFlashCorrect`.
-struct WordHuntVoiceBeatOverlay: View {
-    @ObservedObject var coordinator: WordHuntCoordinator
+/// The 🎤 "Now read it!" beat (Design Direction §6, added this pass): shown
+/// after a completed word's own speak-and-wait beat settles, only when
+/// voice-check is eligible (`MissingLetterCoordinator` skips straight past
+/// this overlay otherwise). Purely presentational -- all of the
+/// listening/timeout/self-hearing-guard logic lives in the coordinator, same
+/// split as `WordHuntVoiceBeatOverlay`/`SpellingBuilderVoiceOverlay`.
+struct MissingLetterVoiceBeatOverlay: View {
+    @ObservedObject var coordinator: MissingLetterCoordinator
     @State private var pulse = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -20,7 +20,7 @@ struct WordHuntVoiceBeatOverlay: View {
                         .font(.system(size: 40, weight: .bold))
                         .foregroundStyle(coordinator.voiceFlashCorrect ? Theme.Color.correct : .white)
                         .scaleEffect(pulse && coordinator.voiceListening && !reduceMotion ? 1.15 : 1.0)
-                    Text("Now you say it!")
+                    Text("Now read it!")
                         .font(Theme.Font.label(20))
                         .foregroundStyle(.white)
                     Text(word)

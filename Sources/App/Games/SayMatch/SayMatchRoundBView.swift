@@ -166,11 +166,14 @@ struct SayMatchRoundBView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 12.0, execute: rescue)
     }
 
+    /// Speech-length-aware pacing (Design Direction §6): waits for "show me,
+    /// <word>" to actually finish (floored at `Theme.Motion.beat`) before
+    /// advancing, replacing a fixed 1.6s `Task.sleep` guess.
     private func runShowMeRescue() {
         model.voiceCheck.stopListening()
         model.registerTimeoutHint()
-        model.speech.speak(segments: [.phrase(.showMe), .pause(0.2), .word(round.targetDisplay)])
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
+        Task {
+            await model.speech.speakAndWait(segments: [.phrase(.showMe), .pause(0.2), .word(round.targetDisplay)])
             guard isActive else { return }
             model.advance()
         }

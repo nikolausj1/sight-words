@@ -57,6 +57,15 @@ final class SayMatchModel: ObservableObject {
     @Published private(set) var currentInstruction: GameInstruction = GameInstruction(.whichWord)
     @Published private(set) var isComplete = false
 
+    /// "One more round?" (Design Direction §6) -- see
+    /// `WordHuntCoordinator.setsPlayedThisSitting`'s doc comment.
+    @Published private(set) var setsPlayedThisSitting = 1
+    var canPlayAgain: Bool { setsPlayedThisSitting < 3 }
+
+    /// Tricky Words rotation mode (Design Direction §6) -- see
+    /// `WordHuntCoordinator.trickyOnly`'s doc comment.
+    private let trickyOnly: Bool
+
     private var hasStarted = false
     private var wrongAttempts = 0
     private var timeoutHints = 0
@@ -93,9 +102,10 @@ final class SayMatchModel: ObservableObject {
     }
     #endif
 
-    init(profile: Profile, service: LearningService) {
+    init(profile: Profile, service: LearningService, trickyOnly: Bool = false) {
         self.profile = profile
         self.service = service
+        self.trickyOnly = trickyOnly
         self.tier = Self.resolveTier(service: service, profile: profile)
         buildRounds()
     }
@@ -106,7 +116,7 @@ final class SayMatchModel: ObservableObject {
         #if DEBUG
         Self.seedDemoExposureIfNeeded(service: service, profile: profile)
         #endif
-        let pool = service.pool(for: profile)
+        let pool = Self.trickyFiltered(service.pool(for: profile), trickyOnly: trickyOnly)
         let kinds: [SayMatchRoundKind] = voiceAvailable
             ? [.hearFind, .seeSay, .hearFind, .seeSay, .hearFind, .seeSay]
             : [.hearFind, .hearFind, .hearFind, .hearFind]
@@ -213,6 +223,30 @@ final class SayMatchModel: ObservableObject {
                                     report: RoundReport(wrongAttempts: wrongAttempts, timeoutHints: timeoutHints))
         }
         isComplete = true
+    }
+
+    /// "One more round?" restart hook (Design Direction §6) -- see
+    /// `WordHuntCoordinator.startNewSet()`'s doc comment. Say & Match's own
+    /// `start()` is guarded by `hasStarted`, so a fresh set has to reset that
+    /// too, not just rebuild `rounds`.
+    func startNewSet() {
+        guard canPlayAgain else { return }
+        setsPlayedThisSitting += 1
+        wrongAttempts = 0
+        timeoutHints = 0
+        roundIndex = 0
+        isComplete = false
+        hasStarted = false
+        buildRounds()
+        start()
+    }
+
+    /// Tricky Words rotation mode (Design Direction §6) -- see
+    /// `WordHuntCoordinator.trickyFiltered(_:trickyOnly:)`'s doc comment.
+    private static func trickyFiltered(_ pool: [WordSnapshot], trickyOnly: Bool) -> [WordSnapshot] {
+        guard trickyOnly else { return pool }
+        let filtered = pool.filter { $0.needsReview || $0.state == .learning }
+        return filtered.isEmpty ? pool : filtered
     }
 
     // MARK: Homophones (contextual-string biasing + match/near-miss, Round B)

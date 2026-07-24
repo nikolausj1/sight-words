@@ -138,6 +138,16 @@ final class SessionCoordinator: ObservableObject {
     /// glyph. `nil` whenever `didPlayGuidedGameRound` is false.
     @Published private(set) var guidedGameID: GameID?
 
+    /// Garden moment (Design Direction §7): every word that crossed from
+    /// some other state INTO `.mastered` during this session, in the order
+    /// it happened -- so `SessionCompleteView` can bloom-in the first one
+    /// before its Done button enables. Deliberately checks the CARD's own
+    /// pre-score state (captured by `score()` before the exposure is
+    /// recorded) rather than just "is the post-score state `.mastered`" --
+    /// a word already mastered coming into this session and staying
+    /// mastered must NOT re-trigger the moment every time it's reviewed.
+    @Published private(set) var wordsMasteredThisSession: [String] = []
+
     /// Fixed for the whole session — see `ControlStyle`.
     let controlStyle: ControlStyle
     /// Fixed for the whole session — see `MicMode`. Always `.auto` outside
@@ -307,6 +317,7 @@ final class SessionCoordinator: ObservableObject {
         let responseMs = revealedResponseMs ?? max(0, Int(Date().timeIntervalSince(cardAppearedAt) * 1000))
         let word = currentWord
         let wordID = card.id
+        let wasMastered = card.state == .mastered
         phase = .feedback(result)
 
         switch result {
@@ -321,6 +332,9 @@ final class SessionCoordinator: ObservableObject {
             await self.runFeedbackSpeech(result: result, word: word)
             let event = self.queue.score(result: result, responseMs: responseMs, sessionDate: self.sessionDate)
             self.service.recordScore(profile: self.profile, snapshot: event.snapshot)
+            if !wasMastered, event.snapshot.state == .mastered {
+                self.wordsMasteredThisSession.append(word)
+            }
             self.updateCompletedCount()
             if event.reteachTriggered {
                 self.phase = .reteach(event.snapshot)

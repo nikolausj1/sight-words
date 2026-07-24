@@ -3,11 +3,13 @@ import SwiftUI
 /// Owns one Missing Letter play session end to end (Games Spec §3.4): builds
 /// each board's words + blanks + tray via the Engine bridge, tracks live
 /// drag-and-drop state (which tile is airborne, where every blank/tray-slot
-/// actually sits on screen), and records tier/exposure data through
+/// actually sits on screen), drives the optional 🎤 "Now read it!" beat after
+/// each completed word (Design Direction §6, added this pass -- mirrors
+/// `WordHuntCoordinator`'s per-found-word voice beat/`SayMatchRoundBView`'s
+/// confident-match rules), and records tier/exposure data through
 /// `LearningService`'s GameKit extension. Mirrors `WordHuntCoordinator`'s
-/// shape — an `@MainActor` `ObservableObject` the view is a thin router over
-/// — but has no voice beat at all (Games Spec §3.4 is a pure drag-and-drop
-/// loop; no 🎤 step).
+/// overall shape — an `@MainActor` `ObservableObject` the view is a thin
+/// router over.
 @MainActor
 final class MissingLetterCoordinator: ObservableObject {
     /// Shared coordinate-space name every blank/tray-slot frame is reported
@@ -24,6 +26,17 @@ final class MissingLetterCoordinator: ObservableObject {
     @Published private(set) var currentRoundIndex = 0
     let totalRounds = 2
     @Published private(set) var showRoundCelebration = false
+
+    /// "One more round?" (Design Direction §6) -- see
+    /// `WordHuntCoordinator.setsPlayedThisSitting`'s doc comment.
+    @Published private(set) var setsPlayedThisSitting = 1
+    var canPlayAgain: Bool { setsPlayedThisSitting < 3 }
+
+    /// 🎤 "Now read it!" beat (Design Direction §6, `phrase-now-you-say-it`):
+    /// the word currently prompting for a voice confirm, or nil when hidden.
+    @Published private(set) var voiceBeatWord: String?
+    @Published private(set) var voiceListening = false
+    @Published private(set) var voiceFlashCorrect = false
 
     /// The tile currently airborne (nil = nothing being dragged). Its source
     /// slot in `tray` renders at `opacity(0)` (still laid out, so
@@ -56,9 +69,13 @@ final class MissingLetterCoordinator: ObservableObject {
     private let profile: Profile
     private let service: LearningService
     private let speech: SpeechService
+    private let voiceCheck: VoiceCheckService
     /// Fixed for a demo session (`-demoGame missingLetter t2`), same
     /// contract as `WordHuntCoordinator.demoTierOverride`.
     private let demoTierOverride: GameTier?
+    /// Tricky Words rotation mode (Design Direction §6) -- see
+    /// `WordHuntCoordinator.trickyOnly`'s doc comment.
+    private let trickyOnly: Bool
 
     // MARK: Round/frame bookkeeping
 
@@ -70,13 +87,52 @@ final class MissingLetterCoordinator: ObservableObject {
     private var wiggleResetTimer: DispatchWorkItem?
     private var celebrationResetTimer: DispatchWorkItem?
 
+    // MARK: 🎤 voice-beat bookkeeping
+
+    /// Guards against two word-completion beats overlapping (see
+    /// `handleWordCompletion`'s doc comment) -- practically never happens
+    /// (one drag gesture resolves at a time), but keeps the flow well-defined
+    /// if it ever did.
+    private var isHandlingWordCompletion = false
+    private var currentVoiceToken = UUID()
+    private var voiceSilenceTimer: DispatchWorkItem?
+    private var lastTeacherSpeechAt: Date?
+
+    /// Same bundled `homophones.json` parse every game's voice beat loads for
+    /// itself (see `WordHuntCoordinator`/`SayMatchModel`'s own copies) --
+    /// duplicated here rather than shared per the game-worker registration
+    /// contract (only this folder is touched).
+    private static let homophones: HomophoneTable = {
+        guard let url = Bundle.main.url(forResource: "homophones", withExtension: "json"),
+              let data = try? Data(contentsOf: url) else { return HomophoneTable(json: Data("[]".utf8)) }
+        return HomophoneTable(json: data)
+    }()
+
+    private static let homophoneGroups: [[String]] = {
+        guard let url = Bundle.main.url(forResource: "homophones", withExtension: "json"),
+              let data = try? Data(contentsOf: url),
+              let groups = try? JSONDecoder().decode([[String]].self, from: data) else { return [] }
+        return groups
+    }()
+
+    private static func contextualStrings(for word: String) -> [String] {
+        let lower = word.lowercased()
+        if let group = homophoneGroups.first(where: { $0.contains { $0.lowercased() == lower } }) {
+            return group
+        }
+        return [word]
+    }
+
     // MARK: Init
 
-    init(profile: Profile, service: LearningService, tierOverride: GameTier? = nil, speech: SpeechService = .shared) {
+    init(profile: Profile, service: LearningService, tierOverride: GameTier? = nil, trickyOnly: Bool = false,
+         voiceCheck: VoiceCheckService = .shared, speech: SpeechService = .shared) {
         self.profile = profile
         self.service = service
         self.speech = speech
+        self.voiceCheck = voiceCheck
         self.demoTierOverride = tierOverride
+        self.trickyOnly = trickyOnly
         let resolvedTier = tierOverride ?? service.gameTier(for: .missingLetter, profile: profile)
         self.tier = resolvedTier
         self.activeConfig = missingLetterConfig(for: resolvedTier)
@@ -88,6 +144,16 @@ final class MissingLetterCoordinator: ObservableObject {
 
     // MARK: Round lifecycle
 
+    /// "One more round?" restart hook (Design Direction §6) -- see
+    /// `WordHuntCoordinator.startNewSet()`'s doc comment.
+    func startNewSet() {
+        guard canPlayAgain else { return }
+        setsPlayedThisSitting += 1
+        currentRoundIndex = 0
+        showRoundCelebration = false
+        startRound()
+    }
+
     private func startRound() {
         roundToken = UUID()
         wrongAttemptsThisRound = 0
@@ -97,6 +163,12 @@ final class MissingLetterCoordinator: ObservableObject {
         celebratingWordID = nil
         blankFrames = [:]
         trayFrames = [:]
+        voiceBeatWord = nil
+        voiceListening = false
+        voiceFlashCorrect = false
+        isHandlingWordCompletion = false
+        voiceCheck.stopListening()
+        voiceSilenceTimer?.cancel()
 
         let resolvedTier = demoTierOverride ?? service.gameTier(for: .missingLetter, profile: profile)
         tier = resolvedTier
@@ -144,12 +216,20 @@ final class MissingLetterCoordinator: ObservableObject {
     /// falls back to relaxing just the minimum — `pickGameWords`'s own
     /// `constraints.maxLength` still holds as a hard cap either way.
     private func pickWords(config: MissingLetterTierConfig, rng: inout RandomNumberGenerator) -> [WordSnapshot] {
-        let pool = service.pool(for: profile)
+        let pool = Self.trickyFiltered(service.pool(for: profile), trickyOnly: trickyOnly)
         let inWindow = pool.filter { $0.id.count >= config.minWordLength && $0.id.count <= config.maxWordLength }
         let maxOnly = pool.filter { $0.id.count <= config.maxWordLength }
         let source = inWindow.count >= config.wordCount ? inWindow : maxOnly
         let constraints = GameWordConstraints(maxLength: config.maxWordLength)
         return pickGameWords(pool: source, count: config.wordCount, constraints: constraints, rng: &rng)
+    }
+
+    /// Tricky Words rotation mode (Design Direction §6) -- see
+    /// `WordHuntCoordinator.trickyFiltered(_:trickyOnly:)`'s doc comment.
+    private static func trickyFiltered(_ pool: [WordSnapshot], trickyOnly: Bool) -> [WordSnapshot] {
+        guard trickyOnly else { return pool }
+        let filtered = pool.filter { $0.needsReview || $0.state == .learning }
+        return filtered.isEmpty ? pool : filtered
     }
 
     // MARK: Frame reporting (from the views, via preference keys)
@@ -221,9 +301,110 @@ final class MissingLetterCoordinator: ObservableObject {
         guard words[wordIndex].isComplete else { return }
         let word = words[wordIndex]
         service.recordGameExposure(word: word.engineID, profile: profile)
-        speech.speakWord(word.text)
         fireWordCelebration(wordID: word.id)
-        checkBoardComplete()
+        handleWordCompletion(word)
+    }
+
+    /// Speaks the just-completed word and waits for it to actually finish
+    /// (Design Direction §6's speech-length-aware pacing -- replaces a fixed
+    /// `Task.sleep` guess with `SpeechService.speakWordAndWait`, floored at
+    /// `Theme.Motion.beat`), then offers the optional 🎤 "Now read it!" beat
+    /// before finally checking whether the whole board is done. A second
+    /// word completing while one of these is still in flight (two blanks
+    /// locking in the same instant -- not expected from a real drag, but not
+    /// impossible) skips straight to `checkBoardComplete()` rather than
+    /// overlapping two beats.
+    private func handleWordCompletion(_ word: MissingLetterWordSlot) {
+        guard !isHandlingWordCompletion else { checkBoardComplete(); return }
+        isHandlingWordCompletion = true
+        let token = roundToken
+        Task { [weak self] in
+            guard let self else { return }
+            await self.speech.speakWordAndWait(word.text)
+            guard self.roundToken == token else { return }
+            self.beginVoiceBeat(for: word, roundToken: token)
+        }
+    }
+
+    // MARK: 🎤 "Now read it!" beat (Design Direction §6)
+
+    /// Voice steps require `profile.voiceCheckOn` (or the DEBUG mock forcing
+    /// it) AND a currently-available recognizer; otherwise the 🎤 step is
+    /// skipped entirely and play is never blocked (Games Spec §1), same rule
+    /// every other GameKit voice beat follows.
+    private var voiceCheckEligible: Bool {
+        #if DEBUG
+        if VoiceCheckService.isMockActive { return voiceCheck.isAvailable() }
+        #endif
+        return profile.voiceCheckOn && voiceCheck.isAvailable()
+    }
+
+    private func beginVoiceBeat(for word: MissingLetterWordSlot, roundToken: UUID) {
+        guard voiceCheckEligible else {
+            isHandlingWordCompletion = false
+            checkBoardComplete()
+            return
+        }
+        voiceBeatWord = word.text
+        voiceListening = true
+        speech.speak(segments: [.phrase(.nowYouSayIt)])
+        let token = UUID()
+        currentVoiceToken = token
+        voiceCheck.startListening(target: word.text, contextualStrings: Self.contextualStrings(for: word.text)) { [weak self] heard, confidence, isFinal in
+            self?.handleVoiceTranscript(heard, confidence: confidence, isFinal: isFinal, word: word.text,
+                                        voiceToken: token, roundToken: roundToken)
+        } onLevel: { _ in }
+        armVoiceSilenceTimer(voiceToken: token, roundToken: roundToken)
+    }
+
+    private func handleVoiceTranscript(_ heard: String, confidence: Float, isFinal: Bool, word: String,
+                                        voiceToken: UUID, roundToken: UUID) {
+        guard voiceToken == currentVoiceToken else { return }
+        // Self-hearing guard (same rationale as every other game's voice
+        // beat): the input tap has no echo cancellation, so drop anything
+        // heard while our own voice is playing or within a short tail after.
+        if speech.isSpeakingAloud { lastTeacherSpeechAt = Date(); return }
+        if let last = lastTeacherSpeechAt, Date().timeIntervalSince(last) < 1.0 { return }
+
+        let tokens = heard.lowercased().components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }
+        guard tokens.contains(where: { Self.homophones.matches(heard: $0, target: word.lowercased()) }) else { return }
+        guard isFinal || confidence >= 0.5 else { return }
+
+        voiceCheck.stopListening()
+        voiceSilenceTimer?.cancel()
+        voiceFlashCorrect = true
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            guard let self, self.roundToken == roundToken else { return }
+            self.voiceFlashCorrect = false
+            self.voiceBeatWord = nil
+            self.voiceListening = false
+            self.isHandlingWordCompletion = false
+            self.checkBoardComplete()
+        }
+    }
+
+    /// Games Spec §1/§3.1-3.5's shared voice-beat rule: "silence >6s ->
+    /// phrase-show-me + auto-advance" -- never blocks play. Speech-length-
+    /// aware (Design Direction §6): waits for "show me" to actually finish
+    /// before clearing the overlay and moving on.
+    private func armVoiceSilenceTimer(voiceToken: UUID, roundToken: UUID) {
+        voiceSilenceTimer?.cancel()
+        let item = DispatchWorkItem { [weak self] in
+            guard let self, voiceToken == self.currentVoiceToken else { return }
+            self.voiceCheck.stopListening()
+            Task { [weak self] in
+                guard let self else { return }
+                await self.speech.speakAndWait(segments: [.phrase(.showMe)])
+                guard self.roundToken == roundToken else { return }
+                self.voiceBeatWord = nil
+                self.voiceListening = false
+                self.isHandlingWordCompletion = false
+                self.checkBoardComplete()
+            }
+        }
+        voiceSilenceTimer = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6.0, execute: item)
     }
 
     /// Animates the airborne tile back to its tray "home" frame, then clears
@@ -271,23 +452,20 @@ final class MissingLetterCoordinator: ObservableObject {
 
     // MARK: Board/round completion
 
+    /// Called once every completed word's own speak-and-wait -> optional 🎤
+    /// beat cycle settles (see `handleWordCompletion`) -- by the time this
+    /// runs, that pacing has ALREADY held the screen for at least as long as
+    /// the last word's own speech (Design Direction §6), so this no longer
+    /// needs its own additional fixed delay before advancing.
     private func checkBoardComplete() {
         guard !words.isEmpty, words.allSatisfy(\.isComplete) else { return }
         let report = RoundReport(wrongAttempts: wrongAttemptsThisRound, timeoutHints: 0)
         service.recordGameRound(for: .missingLetter, profile: profile, report: report)
         if currentRoundIndex + 1 < totalRounds {
-            // A short pause so the last word's own mini-confetti/speech beat
-            // is visible before the next board's worksheet replaces it.
-            let token = roundToken
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
-                guard let self, self.roundToken == token else { return }
-                self.currentRoundIndex += 1
-                self.startRound()
-            }
+            currentRoundIndex += 1
+            startRound()
         } else {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
-                self?.showRoundCelebration = true
-            }
+            showRoundCelebration = true
         }
     }
 
@@ -296,6 +474,8 @@ final class MissingLetterCoordinator: ObservableObject {
     func tearDown() {
         wiggleResetTimer?.cancel()
         celebrationResetTimer?.cancel()
+        voiceSilenceTimer?.cancel()
+        voiceCheck.stopListening()
     }
 
     // MARK: DEBUG demo hooks

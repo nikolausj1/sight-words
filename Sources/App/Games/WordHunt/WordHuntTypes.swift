@@ -73,7 +73,7 @@ struct WordHuntGrid {
     /// function's doc comment).
     static func blank(size: Int) -> WordHuntGrid {
         WordHuntGrid(size: size,
-                     letters: Array(repeating: Array(repeating: Character("A"), count: size), count: size),
+                     letters: Array(repeating: Array(repeating: Character("a"), count: size), count: size),
                      placements: [], decoyCells: [])
     }
 }

@@ -13,6 +13,19 @@ struct SessionCompleteView: View {
     private var isCompact: Bool { hSizeClass == .compact }
     private var avatarSize: CGFloat { isCompact ? 108 : 148 }
 
+    /// Garden moment (Design Direction §7): the first word that crossed to
+    /// `mastered` this session, if any -- `nil` sessions (the overwhelmingly
+    /// common case) skip the whole moment and its Done-button gate entirely.
+    private var newlyMasteredWord: String? { coordinator.wordsMasteredThisSession.first }
+    /// Done stays disabled while the (non-Reduce-Motion) bloom-in plays out,
+    /// so the ~2.5s beat actually gets seen instead of being skippable
+    /// mid-animation. Starts `true` whenever there's no garden moment to gate
+    /// on, or under Reduce Motion (§7: "skip under Reduce Motion -> static +
+    /// clip" -- no animation to wait out, so nothing to gate either).
+    @State private var doneEnabled = true
+    @State private var bloomScale: CGFloat = 0.4
+    @State private var bloomOpacity: Double = 0
+
     var body: some View {
         VStack(spacing: Theme.Metric.gap * 1.5) {
             ZStack {
@@ -52,6 +65,10 @@ struct SessionCompleteView: View {
                 .foregroundStyle(Theme.Color.accent)
             }
 
+            if let word = newlyMasteredWord {
+                gardenMoment(word: word)
+            }
+
             if !coordinator.missedWords.isEmpty {
                 Text("We'll practice these again: \(coordinator.missedWords.joined(separator: ", "))")
                     .font(Theme.Font.body(18))
@@ -67,6 +84,8 @@ struct SessionCompleteView: View {
             }
             .buttonStyle(ChunkyKeyStyle(base: Theme.Color.primary,
                                        deep: Theme.Color.primary.shaded(by: -0.35)))
+            .disabled(!doneEnabled)
+            .opacity(doneEnabled ? 1 : 0.55)
             .padding(.top, Theme.Metric.gap)
         }
         .padding(Theme.Metric.pad)
@@ -80,7 +99,63 @@ struct SessionCompleteView: View {
             } else {
                 withAnimation(Theme.Motion.celebrate) { appeared = true }
             }
+            startGardenMomentIfNeeded()
         }
+    }
+
+    /// Design Direction §7: a 2.5s bloom-in of the newly-mastered word's
+    /// flower, gating Done until it's played out. Reduce Motion skips the
+    /// animation AND the gate -- the flower just shows at rest and Done is
+    /// enabled immediately, since there's no beat left to protect.
+    private func startGardenMomentIfNeeded() {
+        guard newlyMasteredWord != nil else { return }
+        guard !reduceMotion else {
+            bloomScale = 1
+            bloomOpacity = 1
+            return
+        }
+        doneEnabled = false
+        withAnimation(.spring(response: 0.6, dampingFraction: 0.62).delay(0.15)) {
+            bloomScale = 1
+            bloomOpacity = 1
+        }
+        Feedback.fire(.boing)
+        SpeechService.shared.speak(segments: [.phrase(.newFlower)])
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+            doneEnabled = true
+        }
+    }
+
+    /// One planted flower/tree (via the shared `GardenPlant` word->art
+    /// mapping `GardenView` also uses) plus a short celebratory line --
+    /// reuses the existing `.praise2` clip ("You got it!") rather than
+    /// inventing a new Rachel line, since `SpeechService`'s clip manifest is
+    /// out of scope for this pass.
+    private func gardenMoment(word: String) -> some View {
+        HStack(spacing: 10) {
+            Group {
+                if Art.exists(GardenPlant.assetName(word: word, mastered: true)) {
+                    Image(GardenPlant.assetName(word: word, mastered: true))
+                        .resizable()
+                        .scaledToFit()
+                } else {
+                    Image(systemName: "sparkles")
+                        .foregroundStyle(PaperTheme.sunshineGold.accent)
+                }
+            }
+            .frame(width: 52, height: 52)
+            .scaleEffect(bloomScale)
+            .opacity(bloomOpacity)
+            .clipped()
+            Text("A new flower! \(word)")
+                .font(Theme.Font.label(17))
+                .foregroundStyle(Theme.Color.correct)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(PaperTheme.leafGreen.surface, in: Capsule())
+        .overlay(Capsule().strokeBorder(Color.white.opacity(0.75), lineWidth: 2))
+        .shadow(color: .black.opacity(0.14), radius: 5, y: 3)
     }
 }
 

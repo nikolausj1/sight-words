@@ -78,15 +78,21 @@ struct RoundProgressDots: View {
     var family: PaperTheme.Family = PaperTheme.cream
 
     var body: some View {
+        // Dots sit on a small cream paper strip so they stay readable over
+        // any scene backdrop (they were white-on-cream and vanished on the
+        // light hills — lead review).
         HStack(spacing: 8) {
             ForEach(0..<max(totalRounds, 1), id: \.self) { i in
                 Circle()
-                    .fill(i <= currentRound ? family.accent : Color.white.opacity(0.5))
-                    .overlay(Circle().strokeBorder(Color.white.opacity(0.7), lineWidth: 1))
+                    .fill(i <= currentRound ? family.accent : Theme.Color.ink.opacity(0.22))
                     .frame(width: 12, height: 12)
-                    .shadow(color: .black.opacity(0.12), radius: 2, y: 1)
             }
         }
+        .padding(.horizontal, 12).padding(.vertical, 7)
+        .background(
+            Capsule().fill(Color(red: 0.99, green: 0.96, blue: 0.90))
+                .shadow(color: .black.opacity(0.14), radius: 4, y: 3)
+        )
     }
 }
 
@@ -224,44 +230,18 @@ struct GameScaffold<Board: View>: View {
         }
     }
 
+    /// Design Direction §8 (night mode) / WP-E4: every `GameScaffold` game
+    /// now shows the same day/evening/night-aware `SceneBackdrop` Home and
+    /// the session screens use, instead of the single static `game-backdrop`
+    /// art -- `SceneBackdrop` already carries forward the exact "measure the
+    /// real proposed size, force the image to it" fix this property used to
+    /// implement inline (see its doc comment in `Theme.swift` for why that
+    /// fix is load-bearing, not cosmetic: a bare `.scaledToFill()` with no
+    /// numeric `.frame()` reports the image's own raw pixel size upward and
+    /// inflates this whole scaffold on narrower iPhones). Falls back to
+    /// `WarmBackdrop` wholesale if the day art is missing, same as before.
     @ViewBuilder private var backdrop: some View {
-        if Art.exists("game-backdrop") {
-            // Root cause of the "chrome missing on iPhone" bug (Games Spec
-            // §1): `game-backdrop`'s asset has only one (universal-scale)
-            // representation, so a bare `Image(...).resizable().scaledToFill()`
-            // -- with no explicit numeric frame -- reports its own *raw pixel
-            // dimensions* (1184x864) as this ZStack's resolved size whenever
-            // this ZStack's parent asks for it (confirmed by direct
-            // measurement: `.frame(maxWidth: .infinity, maxHeight: .infinity)`
-            // does NOT fix this -- greedy modifiers only affect concrete
-            // proposals, and 1184x864 still wins). On any iPhone (narrower
-            // than 1184pt) that inflated the WHOLE GameScaffold body -- not
-            // just the backdrop -- so the InstructionSpeaker/HoldToExitButton
-            // row and RoundProgressDots were laid out ~350pt outside the
-            // visible screen (still in the view tree, just off-screen, which
-            // is why they read as "missing" rather than mis-styled). iPads
-            // are wide enough that 1184pt never exceeded the real screen
-            // width, so it never surfaced there. `GameBoardCard`'s board-area
-            // measurement was corrupted by this exact same inflation --
-            // that's why `MemoryGameContentView` had to bypass SwiftUI
-            // layout entirely and read `UIScreen.main.bounds` directly (see
-            // its `boardAreaSize` doc comment).
-            //
-            // Fix: read the ACTUAL proposed size via `GeometryReader` and
-            // force the image to those exact numeric points with `.frame`,
-            // instead of trusting `.scaledToFill()`/`.frame(max:)` to shrink
-            // an oversized intrinsic report on their own.
-            GeometryReader { geo in
-                Image("game-backdrop")
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: geo.size.width, height: geo.size.height)
-                    .clipped()
-            }
-            .ignoresSafeArea()
-        } else {
-            WarmBackdrop()
-        }
+        SceneBackdrop()
     }
 }
 

@@ -32,6 +32,7 @@ struct SightWordsApp: App {
             let profile = service.activeProfile()
             profile.streakDays = 3
             profile.lastPracticeDate = .now
+            profile.onboarded = true   // land on Home directly for screenshots
             try? container.mainContext.save()
         }
         #endif

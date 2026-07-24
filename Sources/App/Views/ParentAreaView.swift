@@ -620,6 +620,8 @@ struct ParentAreaView: View {
                 }
                 .pickerStyle(.segmented)
                 Divider().padding(.vertical, 2)
+                nightModeRow(profile: a)
+                Divider().padding(.vertical, 2)
                 gamesTierLockSection(profile: a)
             }
         }
@@ -713,6 +715,30 @@ struct ParentAreaView: View {
                     }
                 }
             }
+        }
+    }
+
+    /// Night-mode override row (Design Direction §8): Auto (clock-driven --
+    /// evening 17-19h, night 19-07h) / Always day / Always night, persisted
+    /// on `Profile.timeOfDayOverrideRaw` and applied to the shared
+    /// `TimeOfDayService` immediately so every already-open screen (Home,
+    /// any game, a session) picks up the change without needing its own
+    /// re-appear.
+    private func nightModeRow(profile: Profile) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Day / night look").font(Theme.Font.label(14)).foregroundStyle(Theme.Color.ink)
+            Picker("Day / night look", selection: Binding(
+                get: { TimeOfDayService.Override(rawValue: profile.timeOfDayOverrideRaw) ?? .auto },
+                set: { newValue in
+                    profile.timeOfDayOverrideRaw = newValue.rawValue
+                    try? context.save()
+                    TimeOfDayService.shared.apply(override: newValue)
+                })) {
+                Text("Auto").tag(TimeOfDayService.Override.auto)
+                Text("Day").tag(TimeOfDayService.Override.day)
+                Text("Night").tag(TimeOfDayService.Override.night)
+            }
+            .pickerStyle(.segmented)
         }
     }
 

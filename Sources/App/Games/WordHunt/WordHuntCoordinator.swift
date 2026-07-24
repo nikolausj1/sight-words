@@ -44,6 +44,15 @@ final class WordHuntCoordinator: ObservableObject {
     let totalRounds = 2
     @Published private(set) var showRoundCelebration = false
 
+    /// "One more round?" (Design Direction §6): how many sets (a set = both
+    /// rounds through `showRoundCelebration`) this sitting has played,
+    /// starting at 1 for the set already in progress. `RoundCelebration`'s
+    /// "Again!" button is offered while this is under the 3-sets-per-sitting
+    /// cap; `startNewSet()` (the restart hook the hosting view passes in) is
+    /// what increments it.
+    @Published private(set) var setsPlayedThisSitting = 1
+    var canPlayAgain: Bool { setsPlayedThisSitting < 3 }
+
     /// Bound into `SuccessMoment` (Games Spec §1) by the hosting view.
     /// Non-private-set deliberately: `View.successMoment(word:onSettled:)`
     /// needs a live `Binding<String?>` it clears itself when the beat
@@ -64,6 +73,10 @@ final class WordHuntCoordinator: ObservableObject {
     /// it stays at the requested tier instead of re-reading (and
     /// potentially promoting/demoting) the profile's real ladder.
     private let demoTierOverride: GameTier?
+    /// Tricky Words rotation mode (Design Direction §6): when true, every
+    /// round's word pool is restricted to `needsReview`/`learning` words
+    /// only, before `pickGameWords` runs -- see `trickyFiltered(_:)`.
+    private let trickyOnly: Bool
 
     // MARK: Round bookkeeping
 
@@ -116,13 +129,14 @@ final class WordHuntCoordinator: ObservableObject {
 
     // MARK: Init
 
-    init(profile: Profile, service: LearningService, tierOverride: GameTier? = nil,
+    init(profile: Profile, service: LearningService, tierOverride: GameTier? = nil, trickyOnly: Bool = false,
          voiceCheck: VoiceCheckService = .shared, speech: SpeechService = .shared) {
         self.profile = profile
         self.service = service
         self.voiceCheck = voiceCheck
         self.speech = speech
         self.demoTierOverride = tierOverride
+        self.trickyOnly = trickyOnly
         let resolvedTier = tierOverride ?? service.gameTier(for: .wordHunt, profile: profile)
         self.tier = resolvedTier
         self.activeConfig = wordHuntConfig(for: resolvedTier)
@@ -156,11 +170,14 @@ final class WordHuntCoordinator: ObservableObject {
         let config = wordHuntConfig(for: resolvedTier)
         activeConfig = config
 
-        let pool = service.pool(for: profile)
+        let pool = Self.trickyFiltered(service.pool(for: profile), trickyOnly: trickyOnly)
         let constraints = GameWordConstraints(maxLength: config.gridSize)
         var pickRng: RandomNumberGenerator = SystemRandomNumberGenerator()
         let picked = pickGameWords(pool: pool, count: config.wordCount, constraints: constraints, rng: &pickRng)
-        let words = picked.map { service.displayText(forID: $0.id).uppercased() }
+        // Design Direction §6/§4: grid + list words render lowercase (sight
+        // words are learned lowercase, "I" excepted) -- `displayText` already
+        // returns each word in its natural stored casing, so no `.uppercased()`.
+        let words = picked.map { service.displayText(forID: $0.id) }
 
         var decoySource: [String] = []
         if resolvedTier == .t3 {
@@ -188,6 +205,30 @@ final class WordHuntCoordinator: ObservableObject {
         #if DEBUG
         maybeScheduleAutoSolve()
         #endif
+    }
+
+    /// "One more round?" restart hook (Design Direction §6): the hosting
+    /// view's `RoundCelebration.onAgain` calls this instead of dismissing --
+    /// same screen, a fresh set of rounds, one sitting further toward the
+    /// 3-set cap.
+    func startNewSet() {
+        guard canPlayAgain else { return }
+        setsPlayedThisSitting += 1
+        currentRoundIndex = 0
+        showRoundCelebration = false
+        startRound()
+    }
+
+    /// Tricky Words rotation mode (Design Direction §6): restricts `pool` to
+    /// `needsReview`/`learning` words only when `trickyOnly` is set. Falls
+    /// back to the unfiltered pool if that leaves nothing at all (the
+    /// rotation view already gates on a real tricky-word count before ever
+    /// launching a game in this mode, so this is only a defensive floor, not
+    /// the expected path).
+    private static func trickyFiltered(_ pool: [WordSnapshot], trickyOnly: Bool) -> [WordSnapshot] {
+        guard trickyOnly else { return pool }
+        let filtered = pool.filter { $0.needsReview || $0.state == .learning }
+        return filtered.isEmpty ? pool : filtered
     }
 
     // MARK: Selection (swipe-select)
@@ -386,10 +427,18 @@ final class WordHuntCoordinator: ObservableObject {
         let item = DispatchWorkItem { [weak self] in
             guard let self, token == self.currentVoiceToken else { return }
             self.voiceCheck.stopListening()
-            self.speech.speak(segments: [.phrase(.showMe)])
-            self.voiceBeatWord = nil
-            self.voiceListening = false
-            self.checkRoundComplete()
+            // Speech-length-aware pacing (Design Direction §6): wait for
+            // "show me" to actually finish (floor `Theme.Motion.beat`)
+            // before clearing the overlay and moving on, instead of talking
+            // over the transition -- replaces a fixed `Task.sleep` guess.
+            Task { [weak self] in
+                guard let self else { return }
+                await self.speech.speakAndWait(segments: [.phrase(.showMe)])
+                guard token == self.currentVoiceToken else { return }
+                self.voiceBeatWord = nil
+                self.voiceListening = false
+                self.checkRoundComplete()
+            }
         }
         voiceSilenceTimer = item
         DispatchQueue.main.asyncAfter(deadline: .now() + 6.0, execute: item)

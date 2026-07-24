@@ -35,6 +35,14 @@ enum PhraseClip {
     case showMe
     case fillTheBlanks
 
+    // "One more round?" end-of-game flow (Design Direction §6): offered
+    // after every `RoundCelebration` where the sitting's 3-set cap hasn't
+    // been hit yet, or the gentle close-out once it has.
+    case playAgain
+    case allDone
+    case gardenGrow
+    case newFlower
+
     var slug: String {
         switch self {
         case .correct: return "correct"
@@ -61,6 +69,10 @@ enum PhraseClip {
         case .praise4: return "praise-4"
         case .showMe: return "show-me"
         case .fillTheBlanks: return "fill-the-blanks"
+        case .playAgain: return "play-again"
+        case .allDone: return "all-done"
+        case .gardenGrow: return "garden-grow"
+        case .newFlower: return "new-flower"
         }
     }
 
@@ -90,6 +102,10 @@ enum PhraseClip {
         case .praise4: return "That was awesome!"
         case .showMe: return "Here it is!"
         case .fillTheBlanks: return "Fill in the missing letters!"
+        case .gardenGrow: return "Look at your garden grow!"
+        case .newFlower: return "A new flower!"
+        case .playAgain: return "Want to play again?"
+        case .allDone: return "All done for now!"
         }
     }
 }
@@ -122,6 +138,28 @@ final class SpeechService: NSObject {
     /// Remaining steps of an in-flight all-clips `speak(segments:)` chain.
     private var playbackQueue: [PlaybackStep] = []
 
+    /// Fires exactly once, whenever whatever the most recent `speak*` call
+    /// started (a lone clip, a full `speak(segments:)` chain, or the
+    /// AVSpeech fallback) actually finishes -- the hook every
+    /// `speakAndWait`/`speakWordAndWait` call awaits via a continuation, and
+    /// also directly available as a plain completion callback for call sites
+    /// that aren't `async` themselves. A second overlapping `speak*` call
+    /// before this fires replaces it without invoking the stale one -- every
+    /// caller in this app already sequences its own speech (never fires two
+    /// beats at once), so this is a documented constraint, not a queue.
+    private var pendingCompletion: (() -> Void)?
+
+    private func finishSpeaking() {
+        let completion = pendingCompletion
+        pendingCompletion = nil
+        completion?()
+    }
+
+    override init() {
+        super.init()
+        synth.delegate = self
+    }
+
     /// True while the teacher voice is audible (clip, chain, or AVSpeech).
     /// Voice-check drops transcripts while this is true — with no echo
     /// cancellation on the plain input tap, the mic can hear the iPad's own
@@ -137,10 +175,14 @@ final class SpeechService: NSObject {
 
     /// Speaks a single word: bundled clip if present, AVSpeech otherwise.
     /// Custom words (not in the Dolch list) never have a clip, so this always
-    /// falls back to AVSpeech for them — same as before.
-    func speakWord(_ text: String) {
+    /// falls back to AVSpeech for them — same as before. `completion` (new,
+    /// optional, defaults to nil so every existing fire-and-forget call site
+    /// is unaffected) fires once this word actually finishes playing — the
+    /// hook `speakWordAndWait` awaits.
+    func speakWord(_ text: String, completion: (() -> Void)? = nil) {
         prepareSession()
         playbackQueue = []
+        pendingCompletion = completion
         if let url = clipURL(word: text) {
             playClip(url: url, fallbackText: text)
         } else {
@@ -151,18 +193,20 @@ final class SpeechService: NSObject {
     /// Speaks a full line — always AVSpeech. The escape hatch for genuinely
     /// dynamic text; everything with a bundled clip should prefer
     /// `speakWord`/`speakSentence`/`speak(segments:)`.
-    func speak(line: String) {
+    func speak(line: String, completion: (() -> Void)? = nil) {
         prepareSession()
         playbackQueue = []
+        pendingCompletion = completion
         speakText(line)
     }
 
     /// Speaks a word's example sentence: bundled clip (`sentence-<word>.m4a`)
     /// if present, AVSpeech reading of `text` otherwise (custom words have no
     /// sentence clip).
-    func speakSentence(forWord word: String, text: String) {
+    func speakSentence(forWord word: String, text: String, completion: (() -> Void)? = nil) {
         prepareSession()
         playbackQueue = []
+        pendingCompletion = completion
         if let url = Bundle.main.url(forResource: "sentence-\(word.lowercased())", withExtension: "m4a") {
             playClip(url: url, fallbackText: text)
         } else {
@@ -175,9 +219,11 @@ final class SpeechService: NSObject {
     /// via chained `AVAudioPlayer`s, honoring `.pause` gaps in between. If even
     /// one clip is missing, the whole line falls back to a single AVSpeech
     /// utterance instead — mixing a recorded voice with the synthesized one
-    /// mid-line would be jarring, so it's all-clips or all-AVSpeech.
-    func speak(segments: [SpeechSegment]) {
+    /// mid-line would be jarring, so it's all-clips or all-AVSpeech. `completion`
+    /// fires once the whole chain (or the AVSpeech fallback) finishes.
+    func speak(segments: [SpeechSegment], completion: (() -> Void)? = nil) {
         prepareSession()
+        pendingCompletion = completion
         if let steps = playbackSteps(for: segments) {
             playbackQueue = steps
             advancePlaybackQueue()
@@ -185,6 +231,42 @@ final class SpeechService: NSObject {
             playbackQueue = []
             speakText(composedFallbackText(for: segments))
         }
+    }
+
+    // MARK: Speech-length-aware beats (Design Direction §6)
+    //
+    // `async` wrappers over the completion-callback API above: a beat that
+    // needs to wait for a word/line to actually finish (instead of guessing
+    // with a fixed `Task.sleep`) awaits one of these. Both enforce
+    // `Theme.Motion.beat` as a floor -- "never shorter than the speech," per
+    // this pass's brief, cuts the other way too: a very short clip (e.g. a
+    // 2-letter word) still holds the beat for at least one calm moment
+    // instead of feeling clipped.
+
+    /// Speaks `text` and suspends until it finishes, at least `minimumBeat`.
+    @discardableResult
+    func speakWordAndWait(_ text: String, minimumBeat: TimeInterval = Theme.Motion.beat) async -> Void {
+        let start = Date()
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            speakWord(text) { continuation.resume() }
+        }
+        await holdRemainingBeat(since: start, minimumBeat: minimumBeat)
+    }
+
+    /// Speaks `segments` and suspends until the whole line finishes, at
+    /// least `minimumBeat`.
+    func speakAndWait(segments: [SpeechSegment], minimumBeat: TimeInterval = Theme.Motion.beat) async {
+        let start = Date()
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            speak(segments: segments) { continuation.resume() }
+        }
+        await holdRemainingBeat(since: start, minimumBeat: minimumBeat)
+    }
+
+    private func holdRemainingBeat(since start: Date, minimumBeat: TimeInterval) async {
+        let elapsed = Date().timeIntervalSince(start)
+        guard elapsed < minimumBeat else { return }
+        try? await Task.sleep(nanoseconds: UInt64((minimumBeat - elapsed) * 1_000_000_000))
     }
 
     private func clipURL(word text: String) -> URL? {
@@ -228,7 +310,10 @@ final class SpeechService: NSObject {
     }
 
     private func advancePlaybackQueue() {
-        guard !playbackQueue.isEmpty else { clipPlayer = nil; return }
+        // Covers both a lone `playClip` (never populated `playbackQueue` to
+        // begin with) and a `speak(segments:)` chain that just finished its
+        // last step -- either way, playback is now genuinely done.
+        guard !playbackQueue.isEmpty else { clipPlayer = nil; finishSpeaking(); return }
         let step = playbackQueue.removeFirst()
         switch step {
         case .pause(let interval):
@@ -269,7 +354,7 @@ final class SpeechService: NSObject {
     }()
 
     private func speakText(_ text: String) {
-        guard !text.isEmpty else { return }
+        guard !text.isEmpty else { finishSpeaking(); return }
         let utterance = AVSpeechUtterance(string: text)
         utterance.voice = Self.fallbackVoice
         utterance.rate = 0.45
@@ -292,5 +377,19 @@ extension SpeechService: AVAudioPlayerDelegate {
         Task { @MainActor in
             self.advancePlaybackQueue()
         }
+    }
+}
+
+extension SpeechService: AVSpeechSynthesizerDelegate {
+    /// The AVSpeech-fallback half of `finishSpeaking()` -- fires whenever a
+    /// `speakText` utterance (word/line/segments fallback) actually finishes
+    /// or is interrupted, same hop-to-MainActor pattern as the audio-player
+    /// delegate above.
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+        Task { @MainActor in self.finishSpeaking() }
+    }
+
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
+        Task { @MainActor in self.finishSpeaking() }
     }
 }

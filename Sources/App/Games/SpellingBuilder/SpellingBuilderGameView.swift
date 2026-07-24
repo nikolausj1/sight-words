@@ -7,6 +7,10 @@ import SwiftData
 /// the active profile from the environment itself, same as
 /// `MissingLetterGameView`.
 struct SpellingBuilderGameView: View {
+    /// Tricky Words rotation mode (Design Direction §6) -- see
+    /// `WordHuntGameView.trickyOnly`'s doc comment.
+    var trickyOnly: Bool = false
+
     @Environment(\.modelContext) private var context
     @Query(filter: #Predicate<Profile> { $0.isActive }) private var activeProfiles: [Profile]
     @Query(sort: \Profile.createdAt) private var allProfiles: [Profile]
@@ -15,7 +19,7 @@ struct SpellingBuilderGameView: View {
 
     var body: some View {
         if let profile {
-            SpellingBuilderGameContentView(profile: profile, context: context)
+            SpellingBuilderGameContentView(profile: profile, context: context, trickyOnly: trickyOnly)
         } else {
             // Defensive only -- every real path into a `GameEntry.destination`
             // already requires an onboarded active profile to exist first.
@@ -33,14 +37,14 @@ struct SpellingBuilderGameContentView: View {
     @StateObject private var coordinator: SpellingBuilderCoordinator
     @Environment(\.dismiss) private var dismiss
 
-    init(profile: Profile, context: ModelContext) {
+    init(profile: Profile, context: ModelContext, trickyOnly: Bool = false) {
         let service = LearningService(context: context)
         var tierOverride: GameTier?
         #if DEBUG
         tierOverride = Self.demoTierOverride()
         #endif
         _coordinator = StateObject(wrappedValue: SpellingBuilderCoordinator(profile: profile, service: service,
-                                                                            tierOverride: tierOverride))
+                                                                            tierOverride: tierOverride, trickyOnly: trickyOnly))
     }
 
     var body: some View {
@@ -55,7 +59,8 @@ struct SpellingBuilderGameContentView: View {
         }
         .overlay {
             if coordinator.showRoundCelebration {
-                RoundCelebration(gameID: .spellingBuilder, onNext: { dismiss() })
+                RoundCelebration(gameID: .spellingBuilder, canPlayAgain: coordinator.canPlayAgain,
+                                  onAgain: { coordinator.startNewSet() }, onNext: { dismiss() })
             }
         }
         .onDisappear { coordinator.tearDown() }

@@ -42,7 +42,12 @@ func generateWordHuntGrid(
     let directions = WordHuntDirection.allowed(for: tier)
     let maxGridAttempts = 40
     let maxAttemptsPerWord = 300
-    let ordered = words.map { $0.uppercased() }.sorted { $0.count > $1.count }
+    // Design Direction §6/§4: sight words are learned lowercase, so the grid
+    // (and the list panel reading it back) render lowercase, same as every
+    // other game -- `words` already arrives in its natural stored casing
+    // (lowercase, except "I") from `WordHuntCoordinator`, so this no longer
+    // forces it upper.
+    let ordered = words.sorted { $0.count > $1.count }
 
     gridAttempt: for _ in 0..<maxGridAttempts {
         var grid: [[Character?]] = Array(repeating: Array(repeating: nil, count: size), count: size)
@@ -92,7 +97,7 @@ func generateWordHuntGrid(
                              protected: Set(placements.flatMap(\.cells)).union(decoyCells),
                              rng: &rng)
 
-        let finalLetters = grid.map { row in row.map { $0 ?? "A" } }
+        let finalLetters = grid.map { row in row.map { $0 ?? "a" } }
         return WordHuntGrid(size: size, letters: finalLetters, placements: placements, decoyCells: decoyCells)
     }
 
@@ -126,9 +131,9 @@ private func startRange(delta: Int, len: Int, size: Int) -> ClosedRange<Int> {
 // MARK: - Fill letters (Games Spec §3.1: "decoy fill letters random weighted to target letters")
 
 private func fillRemaining(grid: inout [[Character?]], weightedTo words: String, rng: inout RandomNumberGenerator) {
-    let alphabet = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+    let alphabet = Array("abcdefghijklmnopqrstuvwxyz")
     var weights = Dictionary(uniqueKeysWithValues: alphabet.map { ($0, 1) })
-    for ch in words.uppercased() where weights[ch] != nil {
+    for ch in words.lowercased() where weights[ch] != nil {
         weights[ch, default: 1] += 4
     }
     let pool = alphabet.flatMap { ch in Array(repeating: ch, count: weights[ch] ?? 1) }
@@ -162,7 +167,7 @@ private func seedConfusableDecoys(grid: inout [[Character?]], placements: [WordH
         for (dr, dc) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
             let r = firstCell.row + dr, c = firstCell.col + dc
             guard r >= 0, r < size, c >= 0, c < size, grid[r][c] == nil else { continue }
-            grid[r][c] = Character(String(confusable).uppercased())
+            grid[r][c] = confusable
             seeded.insert(WordHuntCellRef(row: r, col: c))
             break
         }
@@ -186,7 +191,7 @@ private let profanityDenylist: Set<String> = [
 private func guaranteeNoProfanity(grid: inout [[Character?]], protected: Set<WordHuntCellRef>, rng: inout RandomNumberGenerator) {
     let size = grid.count
     let directions: [(Int, Int)] = [(0, 1), (1, 0), (1, 1), (-1, 1)]
-    let alphabet = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+    let alphabet = Array("abcdefghijklmnopqrstuvwxyz")
 
     for _ in 0..<10 {
         var badCell: WordHuntCellRef?
