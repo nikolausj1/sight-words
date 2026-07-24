@@ -25,6 +25,10 @@ struct TrayFrameKey: PreferenceKey {
 /// tap-vs-drag `DragGesture` (see `MissingLetterTrayTileView`) instead of a
 /// plain button tap, so there's no `isPressed` to key off of here -- `lifted`
 /// is driven directly by "is this tile the one currently airborne" instead.
+/// Uses `GameTileStyle`'s exact visual recipe (Games Spec §1's shared tile
+/// chrome), inlined below as `missingLetterTileChrome` rather than shared
+/// from `GameKit` (frozen this pass) -- `GameTileStyle` itself is a
+/// `ButtonStyle` and can't apply to a non-`Button` drag tile.
 struct MissingLetterTileFace: View {
     let letter: Character
     var lifted: Bool = false
@@ -33,20 +37,39 @@ struct MissingLetterTileFace: View {
         Text(String(letter))
             .font(Theme.Font.display(28))
             .foregroundStyle(.white)
-            .frame(width: 56, height: 56)
+            .missingLetterTileChrome(fill: Theme.Color.primary, size: CGSize(width: 56, height: 56), lifted: lifted)
+    }
+}
+
+private extension View {
+    func missingLetterTileChrome(fill: Color, size: CGSize, lifted: Bool) -> some View {
+        modifier(MissingLetterTileChromeModifier(fill: fill, size: size, lifted: lifted))
+    }
+}
+
+private struct MissingLetterTileChromeModifier: ViewModifier {
+    let fill: Color
+    let size: CGSize
+    let lifted: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        let active = lifted && !reduceMotion
+        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+        return content
+            .frame(width: size.width, height: size.height)
             .background(
                 ZStack {
-                    RoundedRectangle(cornerRadius: Theme.Metric.cornerSmall, style: .continuous)
-                        .fill(LinearGradient(colors: [Theme.Color.primary.shaded(by: 0.25), Theme.Color.primary,
-                                                      Theme.Color.primary.shaded(by: -0.15)],
-                                             startPoint: .top, endPoint: .bottom))
-                    RoundedRectangle(cornerRadius: Theme.Metric.cornerSmall, style: .continuous)
-                        .strokeBorder(LinearGradient(colors: [.white.opacity(0.55), .white.opacity(0.05)],
-                                                     startPoint: .top, endPoint: .bottom), lineWidth: 1.5)
+                    shape.fill(fill)
+                    LinearGradient(colors: [.white.opacity(0.5), .white.opacity(0)],
+                                   startPoint: .top, endPoint: .center)
+                        .clipShape(shape)
+                    shape.strokeBorder(Color.black.opacity(0.08), lineWidth: 1)
                 }
             )
-            .shadow(color: .black.opacity(lifted ? 0.35 : 0.16), radius: lifted ? 10 : 4, y: lifted ? 6 : 2)
-            .scaleEffect(lifted ? 1.16 : 1.0)
+            .shadow(color: .black.opacity(active ? 0.35 : 0.16), radius: active ? 10 : 6, y: active ? 6 : 3)
+            .scaleEffect(active ? 1.06 : 1.0)
+            .animation(Theme.Motion.tileLift, value: active)
     }
 }
 

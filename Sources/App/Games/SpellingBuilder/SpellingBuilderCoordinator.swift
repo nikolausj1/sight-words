@@ -51,6 +51,12 @@ final class SpellingBuilderCoordinator: ObservableObject {
 
     @Published private(set) var draggingTile: SpellingBuilderTile?
     @Published private(set) var dragLocation: CGPoint = .zero
+    /// The open slot a drag is currently hovering over, if any -- drives
+    /// `SpellingBuilderSlotView`'s soft glow-while-hovered highlight (Games
+    /// Spec's shared drag-and-drop polish pass). Recomputed on every
+    /// `dragChanged`, cleared the instant the drag ends (drop, miss, or a
+    /// fresh word starting).
+    @Published private(set) var hoveredSlotID: UUID?
 
     @Published private(set) var wigglingSlotID: UUID?
     /// True once every slot locks -- the segments fuse into one solid green
@@ -176,6 +182,7 @@ final class SpellingBuilderCoordinator: ObservableObject {
         isFused = false
         wigglingSlotID = nil
         draggingTile = nil
+        hoveredSlotID = nil
         voiceListening = false
         micLevel = 0
         voiceFlashCorrect = false
@@ -329,12 +336,14 @@ final class SpellingBuilderCoordinator: ObservableObject {
         guard canInteractWithTray, slots.contains(where: { !$0.locked }) else { return }
         if draggingTile?.id != tile.id { draggingTile = tile }
         dragLocation = location
+        hoveredSlotID = openSlot(at: location).map { slots[$0].id }
     }
 
     func dragEnded(tile: SpellingBuilderTile, location: CGPoint) {
         // See `MissingLetterCoordinator.dragEnded`'s own doc comment for why
         // `dragLocation` is deliberately not set here directly -- both exit
         // paths (`lockSlot`/`returnTileToTray`) already own it themselves.
+        hoveredSlotID = nil
         guard let slotIndex = openSlot(at: location) else {
             returnTileToTray(tile)
             return

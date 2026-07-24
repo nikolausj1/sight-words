@@ -119,6 +119,13 @@ private struct MissingLetterBlankView: View {
     @State private var glow = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// True while a dragged tile is currently over this specific blank
+    /// (Games Spec's shared drag-and-drop polish pass) -- distinct from the
+    /// perpetual idle `glow` pulse above; a drop (successful or missed)
+    /// cancels this the instant `MissingLetterCoordinator.dragEnded` clears
+    /// `hoveredBlankID`.
+    private var isHovered: Bool { coordinator.hoveredBlankID == blank.id }
+
     var body: some View {
         VStack(spacing: 3) {
             Color.clear.frame(width: 30, height: 34)   // reserves the same box a revealed letter will occupy
@@ -128,6 +135,13 @@ private struct MissingLetterBlankView: View {
                 .opacity(glow || reduceMotion ? 1 : 0.45)
                 .shadow(color: Theme.Color.accent.opacity(glow ? 0.65 : 0.15), radius: glow ? 6 : 2)
         }
+        .padding(6)
+        .background(
+            RoundedRectangle(cornerRadius: Theme.Metric.cornerSmall, style: .continuous)
+                .fill(Theme.Color.primary.opacity(isHovered && !reduceMotion ? 0.18 : 0))
+        )
+        .scaleEffect(isHovered && !reduceMotion ? 1.12 : 1.0)
+        .animation(Theme.Motion.tileLift, value: isHovered)
         .background(
             GeometryReader { geo in
                 Color.clear.preference(key: BlankFrameKey.self,
@@ -140,7 +154,7 @@ private struct MissingLetterBlankView: View {
         ))
         .onAppear {
             guard !reduceMotion else { return }
-            withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) { glow = true }
+            withAnimation(.easeInOut(duration: Theme.Motion.beat).repeatForever(autoreverses: true)) { glow = true }
         }
     }
 }

@@ -54,11 +54,12 @@ struct SayMatchRoundAView: View {
     }
 
     @ViewBuilder private var tiles: some View {
-        ForEach(round.tileIDs, id: \.self) { tileID in
+        ForEach(Array(round.tileIDs.enumerated()), id: \.element) { index, tileID in
             SayMatchTile(text: model.service.displayText(forID: tileID),
                         fastBob: fastBob,
                         isHighlighted: correctTileID == tileID,
                         isDrifted: driftedTileIDs.contains(tileID),
+                        bobIndex: index,
                         action: { handleTap(tileID) })
                 .wrongShake(Binding(
                     get: { wrongTileID == tileID },

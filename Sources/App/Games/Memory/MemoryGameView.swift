@@ -32,7 +32,6 @@ struct MemoryGameView: View {
 struct MemoryGameContentView: View {
     @StateObject private var coordinator: MemoryCoordinator
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.gameBoardAreaSize) private var boardAreaSize
 
     init(profile: Profile, context: ModelContext) {
         let service = LearningService(context: context)
@@ -51,7 +50,7 @@ struct MemoryGameContentView: View {
             totalRounds: coordinator.totalRounds,
             onExit: { dismiss() }
         ) {
-            MemoryBoardView(coordinator: coordinator, availableSize: boardAreaSize)
+            MemoryBoardView(coordinator: coordinator)
         }
         .overlay {
             if coordinator.bankingPairID != nil {

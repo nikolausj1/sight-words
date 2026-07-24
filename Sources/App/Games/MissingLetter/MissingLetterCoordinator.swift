@@ -35,6 +35,12 @@ final class MissingLetterCoordinator: ObservableObject {
     /// (declared after the word grid) and the grid itself.
     @Published private(set) var draggingTile: MissingLetterTile?
     @Published private(set) var dragLocation: CGPoint = .zero
+    /// The open blank a drag is currently hovering over, if any -- drives
+    /// `MissingLetterBlankView`'s soft glow-while-hovered highlight (Games
+    /// Spec's shared drag-and-drop polish pass). Recomputed on every
+    /// `dragChanged`, cleared the instant the drag ends (drop, miss, or a
+    /// fresh round starting).
+    @Published private(set) var hoveredBlankID: UUID?
 
     /// The blank that should wiggle right now (Games Spec §3.4: "wrong →
     /// tile returns + the blank wiggles side-to-side"), and the word that
@@ -86,6 +92,7 @@ final class MissingLetterCoordinator: ObservableObject {
         roundToken = UUID()
         wrongAttemptsThisRound = 0
         draggingTile = nil
+        hoveredBlankID = nil
         wigglingBlankID = nil
         celebratingWordID = nil
         blankFrames = [:]
@@ -156,6 +163,7 @@ final class MissingLetterCoordinator: ObservableObject {
         guard wordsHaveOpenBlank else { return }
         if draggingTile?.id != tile.id { draggingTile = tile }
         dragLocation = location
+        hoveredBlankID = openBlank(at: location).map { words[$0.wordIndex].blanks[$0.blankIndex].id }
     }
 
     private var wordsHaveOpenBlank: Bool {
@@ -172,6 +180,7 @@ final class MissingLetterCoordinator: ObservableObject {
         // AFTER `returnTileToTray`'s animated assignment and silently
         // overwrite it back to the drop point with no animation, making the
         // "tile returns" beat (Games Spec §3.4) snap instead of glide.
+        hoveredBlankID = nil
         guard let (wordIndex, blankIndex) = openBlank(at: location) else {
             returnTileToTray(tile)
             return
@@ -231,8 +240,13 @@ final class MissingLetterCoordinator: ObservableObject {
         }
     }
 
+    /// Deliberately does NOT call `Feedback.fire(.boing)` here -- the view's
+    /// own `.wrongShake` (bound to `wigglingBlankID`, see
+    /// `MissingLetterBlankView`) already fires it itself the instant its
+    /// trigger flips true, same contract `SpellingBuilderCoordinator`
+    /// documents at its own wrong-shake call site. Firing it here too would
+    /// double the boing SFX/haptic on every miss.
     private func fireWiggle(blankID: UUID) {
-        Feedback.fire(.boing)
         wiggleResetTimer?.cancel()
         wigglingBlankID = blankID
         let item = DispatchWorkItem { [weak self] in self?.wigglingBlankID = nil }

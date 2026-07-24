@@ -36,11 +36,17 @@ enum MemoryCardFace: Equatable {
 
 /// One physical card on the board: a stable per-instance `id` (so SwiftUI
 /// can track/animate it across matches/re-shuffles) plus the `pairID` its
-/// partner card shares (the engine word id, lowercased) -- a match is just
-/// two face-up cards with equal `pairID`s.
+/// partner card shares -- a match is just two face-up cards with equal
+/// `pairID`s. `pairID` is unique per physical pair SLOT on the board (not
+/// necessarily the engine word id): a small pool can reuse the same word
+/// across more than one pair (Games Spec: acceptable for Memory), in which
+/// case each slot still gets its own `pairID` so matching/board-clear math
+/// stays correct -- `wordID` carries the real engine word id for those
+/// slots (identical to `pairID` in the common, non-reused case).
 struct MemoryCard: Identifiable, Equatable {
     let id: String
     let pairID: String
+    let wordID: String
     let displayText: String
     let face: MemoryCardFace
 }
@@ -52,15 +58,18 @@ enum MemoryBoardBuilder {
     /// `.word` at T1/T2, one `.word` + one `.speaker` at T3). `roundToken`
     /// is folded into every card id so a fresh round's cards never collide
     /// with (or get confused for) the previous round's, even if the same
-    /// word is picked again.
+    /// word is picked again. `pairID` is derived from the slot index (not
+    /// `w.id`) so a caller that reused a word across multiple slots (small
+    /// pool fallback) still gets one distinct pairID per physical pair.
     static func build(words: [(id: String, display: String)], usesSpeakerCards: Bool,
                        roundToken: String) -> [MemoryCard] {
         var cards: [MemoryCard] = []
         for (i, w) in words.enumerated() {
             let firstFace: MemoryCardFace = .word
             let secondFace: MemoryCardFace = usesSpeakerCards ? .speaker : .word
-            cards.append(MemoryCard(id: "\(roundToken)-\(i)-a", pairID: w.id, displayText: w.display, face: firstFace))
-            cards.append(MemoryCard(id: "\(roundToken)-\(i)-b", pairID: w.id, displayText: w.display, face: secondFace))
+            let pairID = "\(roundToken)-\(i)"
+            cards.append(MemoryCard(id: "\(pairID)-a", pairID: pairID, wordID: w.id, displayText: w.display, face: firstFace))
+            cards.append(MemoryCard(id: "\(pairID)-b", pairID: pairID, wordID: w.id, displayText: w.display, face: secondFace))
         }
         return cards.shuffled()
     }

@@ -22,6 +22,16 @@ struct WordHuntBoardView: View {
                             .position(x: cellSize * (CGFloat(col) + 0.5), y: cellSize * (CGFloat(row) + 0.5))
                     }
                 }
+                // A subtle sparkle riding the leading edge of the live
+                // selection while dragging (Games Spec's shared-polish
+                // pass) -- cheap (2-3 offset circles, no particle system),
+                // and drawn in the same `.local` coordinate space the cells
+                // themselves are positioned in.
+                if let dragLocation, !coordinator.selection.isEmpty, !reduceMotion {
+                    SelectionSparkle()
+                        .position(dragLocation)
+                        .allowsHitTesting(false)
+                }
             }
             .frame(width: boardSide, height: boardSide)
             .position(x: geo.size.width / 2, y: geo.size.height / 2)
@@ -109,7 +119,38 @@ struct WordHuntBoardView: View {
             .shadow(color: .black.opacity(lift > 1.01 ? 0.22 : 0), radius: lift > 1.01 ? 4 : 0, y: 2)
             .animation(Theme.Motion.snappy, value: isSelected)
             .animation(Theme.Motion.snappy, value: isHinting && coordinator.hintPulseOn)
-            .animation(.easeOut(duration: 0.5), value: isFading)
+            // The wrong-commit ribbon fade IS this game's own drift-away
+            // beat (see `WordHuntCoordinator.fadingWrongSelection`'s doc
+            // comment) -- shares `Theme.Motion.drift`'s timing with every
+            // other game's wrong-answer drift instead of a duplicated
+            // magic-number duration.
+            .animation(Theme.Motion.drift, value: isFading)
             .animation(.easeOut(duration: 0.12), value: elasticOffset)
+    }
+}
+
+/// A cheap 3-dot twinkle riding the live selection's leading edge while
+/// dragging (Games Spec's shared-polish pass) -- no particle system, just a
+/// few small offset circles that fade in/out on a slow stagger.
+private struct SelectionSparkle: View {
+    @State private var lit = false
+
+    var body: some View {
+        ZStack {
+            sparkle(offset: CGSize(width: -6, height: -5), delay: 0)
+            sparkle(offset: CGSize(width: 7, height: 2), delay: 0.15)
+            sparkle(offset: CGSize(width: -2, height: 7), delay: 0.3)
+        }
+        .onAppear { lit = true }
+    }
+
+    private func sparkle(offset: CGSize, delay: Double) -> some View {
+        Circle()
+            .fill(Color.white.opacity(0.9))
+            .frame(width: 5, height: 5)
+            .offset(offset)
+            .opacity(lit ? 0.9 : 0.2)
+            .scaleEffect(lit ? 1 : 0.4)
+            .animation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true).delay(delay), value: lit)
     }
 }

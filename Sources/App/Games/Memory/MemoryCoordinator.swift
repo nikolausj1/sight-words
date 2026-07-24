@@ -141,7 +141,8 @@ final class MemoryCoordinator: ObservableObject {
         let pool = service.pool(for: profile)
         var pickRng: RandomNumberGenerator = SystemRandomNumberGenerator()
         let picked = pickGameWords(pool: pool, count: config.pairCount, rng: &pickRng)
-        let words = picked.map { (id: $0.id, display: service.displayText(forID: $0.id)) }
+        let words = Self.padWithReuse(picked.map { (id: $0.id, display: service.displayText(forID: $0.id)) },
+                                      upTo: config.pairCount)
         cards = MemoryBoardBuilder.build(words: words, usesSpeakerCards: config.usesSpeakerCards,
                                          roundToken: roundToken.uuidString)
 
@@ -169,6 +170,7 @@ final class MemoryCoordinator: ObservableObject {
         }
         guard !clearingBoard, pendingCompareIDs.count < 2 else { return }
         faceUpIDs.insert(id)
+        Feedback.fire(.keyTap)
         speech.speakWord(card.displayText)
         pendingCompareIDs.append(id)
         if pendingCompareIDs.count == 2 {
@@ -185,17 +187,17 @@ final class MemoryCoordinator: ObservableObject {
                   let c0 = self.cards.first(where: { $0.id == ids[0] }),
                   let c1 = self.cards.first(where: { $0.id == ids[1] }) else { return }
             if c0.pairID == c1.pairID {
-                self.handleMatch(pairID: c0.pairID, cardIDs: ids)
+                self.handleMatch(pairID: c0.pairID, wordID: c0.wordID, cardIDs: ids)
             } else {
                 self.handleMismatch(cardIDs: ids)
             }
         }
     }
 
-    private func handleMatch(pairID: String, cardIDs: [String]) {
+    private func handleMatch(pairID: String, wordID: String, cardIDs: [String]) {
         matchedPairIDs.insert(pairID)
         Feedback.fire(.correct)
-        service.recordGameExposure(word: pairID, profile: profile)
+        service.recordGameExposure(word: wordID, profile: profile)
         justMatchedCardIDs.formUnion(cardIDs)
         let token = roundToken
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
@@ -210,7 +212,7 @@ final class MemoryCoordinator: ObservableObject {
         mismatchesThisRound += 1
         wrongCardIDs = Set(cardIDs)
         let token = roundToken
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + Theme.Motion.beat) { [weak self] in
             guard let self, self.roundToken == token else { return }
             for id in cardIDs { self.faceUpIDs.remove(id) }
         }
@@ -435,9 +437,27 @@ final class MemoryCoordinator: ObservableObject {
         var rng: RandomNumberGenerator = SystemRandomNumberGenerator()
         let picked = pickGameWords(pool: newPool, count: config.pairCount, rng: &rng)
         guard !picked.isEmpty else { return }
-        let words = picked.map { (id: $0.id, display: service.displayText(forID: $0.id)) }
+        let words = Self.padWithReuse(picked.map { (id: $0.id, display: service.displayText(forID: $0.id)) },
+                                      upTo: config.pairCount)
         cards = MemoryBoardBuilder.build(words: words, usesSpeakerCards: config.usesSpeakerCards,
                                          roundToken: roundToken.uuidString)
     }
     #endif
+
+    /// Games Spec's Memory brief: a pool with fewer eligible words than the
+    /// tier's `pairCount` still gets a full board -- reusing words across
+    /// pairs is acceptable for this game (unlike Word Hunt/Say & Match, where
+    /// a repeated word would make a round trivially guessable). Cycles
+    /// through whatever was picked until `upTo` pairs are queued; a no-op
+    /// once `picked` already meets or exceeds `upTo` (the common case).
+    private static func padWithReuse(_ picked: [(id: String, display: String)], upTo: Int) -> [(id: String, display: String)] {
+        guard !picked.isEmpty, picked.count < upTo else { return picked }
+        var words = picked
+        var i = 0
+        while words.count < upTo {
+            words.append(picked[i % picked.count])
+            i += 1
+        }
+        return words
+    }
 }

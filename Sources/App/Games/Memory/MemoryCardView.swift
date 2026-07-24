@@ -16,6 +16,10 @@ struct MemoryCardView: View {
     let action: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// A tiny settle bounce the instant a pair matches (Games Spec's shared
+    /// tile-feedback pass) -- separate from `showConfetti`'s own short-lived
+    /// burst so the scale pop still plays even once confetti clears.
+    @State private var matchBounce = false
 
     var body: some View {
         Button(action: action) {
@@ -35,6 +39,13 @@ struct MemoryCardView: View {
             RoundedRectangle(cornerRadius: Theme.Metric.cornerSmall, style: .continuous)
                 .strokeBorder(isMatched ? Theme.Color.correct : Color.clear, lineWidth: 3)
         )
+        .scaleEffect(matchBounce ? 1.08 : 1.0)
+        .animation(Theme.Motion.tileLift, value: matchBounce)
+        .onChange(of: isMatched) { _, matched in
+            guard matched, !reduceMotion else { return }
+            matchBounce = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { matchBounce = false }
+        }
         .accessibilityLabel(card.face == .speaker ? "Speaker" : card.displayText)
     }
 
@@ -54,7 +65,7 @@ struct MemoryCardView: View {
                 .rotation3DEffect(.degrees(180), axis: (x: 0, y: 1, z: 0))
         }
         .rotation3DEffect(.degrees(isFaceUp ? 180 : 0), axis: (x: 0, y: 1, z: 0))
-        .animation(reduceMotion ? nil : Theme.Motion.snappy, value: isFaceUp)
+        .animation(reduceMotion ? nil : Theme.Motion.cardFlip, value: isFaceUp)
     }
 
     private var faceDown: some View {
@@ -81,11 +92,15 @@ struct MemoryCardView: View {
         .overlay(shape.strokeBorder(Color.white.opacity(0.25), lineWidth: 1.5))
     }
 
+    /// Fills whatever space `MemoryBoardView`'s grid math already imposed
+    /// via its own outer `.frame(width:height:)` -- unlike a fixed-size
+    /// tray tile, a card's footprint is computed per device/tier, so this
+    /// mirrors `GameTileStyle`'s exact visual recipe (Games Spec §1's
+    /// shared tile chrome) inline rather than forcing that style's own
+    /// fixed constant size (GameKit is frozen this pass, so this can't
+    /// route through a shared non-`Button` variant of it either).
     private var faceUp: some View {
-        let shape = RoundedRectangle(cornerRadius: Theme.Metric.cornerSmall, style: .continuous)
-        return ZStack {
-            shape.fill(Theme.Color.surface)
-            shape.strokeBorder(Theme.Color.primary.opacity(0.35), lineWidth: 2)
+        Group {
             switch card.face {
             case .word:
                 Text(card.displayText.capitalized)
@@ -100,6 +115,13 @@ struct MemoryCardView: View {
                     .foregroundStyle(Theme.Color.primary)
             }
         }
+        // `.background` below sizes itself to its *foreground* content --
+        // without this, the chrome would hug the Text/Image's own tight
+        // intrinsic size instead of filling the whole card the way the old
+        // bare `shape.fill(...)` ZStack layer used to (a ZStack gives every
+        // child its own full proposed size).
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .memoryTileChrome(fill: Theme.Color.surface, corner: Theme.Metric.cornerSmall)
     }
 
     private var starBadge: some View {
@@ -117,5 +139,37 @@ struct MemoryCardView: View {
         }
         .padding(6)
         .allowsHitTesting(false)
+    }
+}
+
+/// `GameTileStyle`'s exact visual recipe (rounded-14 card, glossy top
+/// highlight, soft shadow -- Games Spec §1's shared tile chrome), inlined
+/// here rather than shared from `GameKit` (frozen this pass): `faceUp`'s
+/// content isn't a `Button`, so `GameTileStyle` itself (a `ButtonStyle`)
+/// doesn't apply. `fileprivate` -- this is a local copy for this file only,
+/// not a new cross-game shared entry point.
+private extension View {
+    func memoryTileChrome(fill: Color, corner: CGFloat) -> some View {
+        modifier(MemoryTileChromeModifier(fill: fill, corner: corner))
+    }
+}
+
+private struct MemoryTileChromeModifier: ViewModifier {
+    let fill: Color
+    let corner: CGFloat
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: corner, style: .continuous)
+        return content
+            .background(
+                ZStack {
+                    shape.fill(fill)
+                    LinearGradient(colors: [.white.opacity(0.5), .white.opacity(0)],
+                                   startPoint: .top, endPoint: .center)
+                        .clipShape(shape)
+                    shape.strokeBorder(Color.black.opacity(0.08), lineWidth: 1)
+                }
+            )
+            .shadow(color: .black.opacity(0.16), radius: 6, y: 3)
     }
 }

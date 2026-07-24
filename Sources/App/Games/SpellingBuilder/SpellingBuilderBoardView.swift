@@ -132,6 +132,12 @@ private struct SpellingBuilderSlotView: View {
         slot.locked || coordinator.showFullWordPreview || coordinator.isPeeking
     }
 
+    /// True while a dragged tile is currently over this specific slot (Games
+    /// Spec's shared drag-and-drop polish pass) -- a drop (successful or
+    /// missed) cancels this the instant `SpellingBuilderCoordinator
+    /// .dragEnded` clears `hoveredSlotID`.
+    private var isHovered: Bool { coordinator.hoveredSlotID == slot.id }
+
     var body: some View {
         ZStack {
             if showsLetter {
@@ -152,14 +158,13 @@ private struct SpellingBuilderSlotView: View {
             Group {
                 if !coordinator.isFused {
                     RoundedRectangle(cornerRadius: Theme.Metric.cornerSmall, style: .continuous)
-                        .fill(Theme.Color.surface)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: Theme.Metric.cornerSmall, style: .continuous)
-                                .strokeBorder(Theme.Color.primary.opacity(0.3), lineWidth: 2)
-                        )
+                        .fill(Theme.Color.primary.opacity(isHovered && !reduceMotion ? 0.18 : 0))
                 }
             }
         )
+        .modifier(SlotChrome(isFused: coordinator.isFused))
+        .scaleEffect(isHovered && !reduceMotion ? 1.12 : 1.0)
+        .animation(Theme.Motion.tileLift, value: isHovered)
         .background(
             GeometryReader { geo in
                 Color.clear.preference(key: SpellingSlotFrameKey.self,
@@ -181,8 +186,25 @@ private struct SpellingBuilderSlotView: View {
             .shadow(color: Theme.Color.accent.opacity(glow ? 0.65 : 0.15), radius: glow ? 6 : 2)
             .onAppear {
                 guard !reduceMotion else { return }
-                withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) { glow = true }
+                withAnimation(.easeInOut(duration: Theme.Motion.beat).repeatForever(autoreverses: true)) { glow = true }
             }
+    }
+}
+
+/// The shared tile chrome (`GameTileStyle`'s recipe, via
+/// `spellingBuilderTileChrome` -- see `SpellingBuilderTrayView.swift`),
+/// applied only while the word isn't fused yet -- once every slot locks the
+/// row itself fuses into one solid pill (`SpellingBuilderSlotsRow`'s own
+/// background) and each slot's individual chrome would just be extra visual
+/// noise under that shared pill.
+private struct SlotChrome: ViewModifier {
+    let isFused: Bool
+    func body(content: Content) -> some View {
+        if isFused {
+            content
+        } else {
+            content.spellingBuilderTileChrome(fill: Theme.Color.surface, size: nil)
+        }
     }
 }
 

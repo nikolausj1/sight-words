@@ -6,16 +6,26 @@ import SwiftUI
 /// per this worker's "iPhone compact functional" brief).
 struct MemoryBoardView: View {
     @ObservedObject var coordinator: MemoryCoordinator
-    /// The board card's own interior size, read by `MemoryGameContentView`
-    /// from `GameScaffold`'s `\.gameBoardAreaSize` environment value (see
-    /// `GameBoardCard` in GameScaffold.swift) and passed down as a plain
-    /// value here. This used to be estimated from `UIScreen.main.bounds`
-    /// because a real `GeometryReader` anywhere in this chain inherited a
-    /// GameScaffold-level layout bug that inflated the whole board area to a
-    /// wildly wrong (iPad-shaped) size on iPhone; that bug is now fixed at
-    /// its source, so the environment value is a correct, bounded
-    /// measurement on every device.
-    let availableSize: CGSize
+    /// The board card's own interior size, read directly from
+    /// `GameScaffold`'s `\.gameBoardAreaSize` environment value (see
+    /// `GameBoardCard` in GameScaffold.swift). This used to be estimated
+    /// from `UIScreen.main.bounds` because a real `GeometryReader` anywhere
+    /// in this chain inherited a GameScaffold-level layout bug that inflated
+    /// the whole board area to a wildly wrong (iPad-shaped) size on iPhone;
+    /// that bug is now fixed at its source, so the environment value is a
+    /// correct, bounded measurement on every device.
+    ///
+    /// Read here (inside the view `GameBoardCard.content()` actually
+    /// constructs) rather than one level up in `MemoryGameContentView` --
+    /// `@Environment` resolves to whatever is ambient at a view's own
+    /// position in the tree, and `GameBoardCard` only sets this value on
+    /// the subtree `content()` returns, not on `content()`'s caller. A
+    /// parent reading it before calling `board()` always sees the
+    /// unset `.zero` default, which is what previously starved every
+    /// card's computed width/height to zero/negative and rendered a
+    /// completely blank board no matter how many cards `coordinator.cards`
+    /// actually held.
+    @Environment(\.gameBoardAreaSize) private var availableSize
     @Environment(\.horizontalSizeClass) private var hSizeClass
     private var isCompact: Bool { hSizeClass == .compact }
 
