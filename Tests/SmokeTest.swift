@@ -406,6 +406,360 @@ do {
 }
 
 // =====================================================================
+// 11. GameTiers: RoundReport clean/rough boundaries
+// =====================================================================
+do {
+    check(RoundReport(wrongAttempts: 0, timeoutHints: 0).isClean, "0 wrong/0 hints -> clean")
+    check(RoundReport(wrongAttempts: 1, timeoutHints: 0).isClean, "1 wrong/0 hints -> still clean")
+    check(!RoundReport(wrongAttempts: 2, timeoutHints: 0).isClean, "2 wrong/0 hints -> not clean")
+    check(!RoundReport(wrongAttempts: 0, timeoutHints: 1).isClean, "0 wrong/1 hint -> not clean")
+    check(!RoundReport(wrongAttempts: 3, timeoutHints: 0).isClean, "3 wrong -> not clean")
+    check(RoundReport(wrongAttempts: 3, timeoutHints: 0).isRough, "3 wrong/0 hints -> rough")
+    check(RoundReport(wrongAttempts: 0, timeoutHints: 2).isRough, "0 wrong/2 hints -> rough")
+    check(!RoundReport(wrongAttempts: 2, timeoutHints: 1).isRough, "2 wrong/1 hint -> neither clean nor rough")
+    check(!RoundReport(wrongAttempts: 2, timeoutHints: 1).isClean, "2 wrong/1 hint -> confirmed not clean")
+}
+
+// =====================================================================
+// 12. GameTiers: TierLadder staircase rules
+// =====================================================================
+do {
+    // Starts at t1.
+    let fresh = TierLadder()
+    check(fresh.tier == .t1, "TierLadder starts at t1")
+
+    // 5-of-7 promote, achieved with fewer than 7 rounds played.
+    var ladder = TierLadder()
+    let clean = RoundReport(wrongAttempts: 0, timeoutHints: 0)
+    for _ in 0..<4 {
+        ladder.record(clean, reviewBacklogGrowing: false)
+    }
+    check(ladder.tier == .t1, "4 clean rounds alone do not promote (need 5)")
+    ladder.record(clean, reviewBacklogGrowing: false)
+    check(ladder.tier == .t2, "5th clean round (of only 5 played) promotes t1 -> t2")
+}
+
+do {
+    // 5-of-7 with 2 non-clean rounds interspersed still promotes once the
+    // 5th clean round lands, and NOT before.
+    var ladder = TierLadder()
+    let clean = RoundReport(wrongAttempts: 0, timeoutHints: 0)
+    let mediocre = RoundReport(wrongAttempts: 2, timeoutHints: 1) // neither clean nor rough
+    let sequence: [RoundReport] = [clean, mediocre, clean, clean, mediocre, clean, clean]
+    var promotedAt: Int?
+    for (i, r) in sequence.enumerated() {
+        ladder.record(r, reviewBacklogGrowing: false)
+        if ladder.tier == .t2 && promotedAt == nil { promotedAt = i }
+    }
+    check(promotedAt == 6, "promotion fires exactly on the 5th clean round within the trailing 7 (index 6), got \(String(describing: promotedAt))")
+}
+
+do {
+    // Fewer than 5 clean of the last 7 never promotes.
+    var ladder = TierLadder()
+    let clean = RoundReport(wrongAttempts: 0, timeoutHints: 0)
+    let mediocre = RoundReport(wrongAttempts: 2, timeoutHints: 1)
+    for _ in 0..<4 {
+        ladder.record(clean, reviewBacklogGrowing: false)
+        ladder.record(mediocre, reviewBacklogGrowing: false)
+    }
+    check(ladder.tier == .t1, "4 clean out of 8 rounds (never 5 in the trailing 7) never promotes")
+}
+
+do {
+    // 2 consecutive rough rounds demotes; starting from t2 so a demotion has
+    // somewhere to go.
+    var ladder = TierLadder(tier: .t2)
+    let rough = RoundReport(wrongAttempts: 4, timeoutHints: 0)
+    ladder.record(rough, reviewBacklogGrowing: false)
+    check(ladder.tier == .t2, "1 rough round alone does not demote")
+    ladder.record(rough, reviewBacklogGrowing: false)
+    check(ladder.tier == .t1, "2 CONSECUTIVE rough rounds demote t2 -> t1")
+}
+
+do {
+    // A non-rough round breaks the rough streak.
+    var ladder = TierLadder(tier: .t2)
+    let rough = RoundReport(wrongAttempts: 4, timeoutHints: 0)
+    let ok = RoundReport(wrongAttempts: 1, timeoutHints: 0)
+    ladder.record(rough, reviewBacklogGrowing: false)
+    ladder.record(ok, reviewBacklogGrowing: false)
+    ladder.record(rough, reviewBacklogGrowing: false)
+    check(ladder.tier == .t2, "rough, ok, rough (not consecutive) does not demote")
+}
+
+do {
+    // Floor/ceiling: demote from t1 stays at t1; promote from t3 stays at t3.
+    var floor = TierLadder(tier: .t1)
+    let rough = RoundReport(wrongAttempts: 4, timeoutHints: 0)
+    floor.record(rough, reviewBacklogGrowing: false)
+    floor.record(rough, reviewBacklogGrowing: false)
+    check(floor.tier == .t1, "t1 has no floor below it: 2 rough rounds keep it at t1")
+
+    var ceiling = TierLadder(tier: .t3)
+    let clean = RoundReport(wrongAttempts: 0, timeoutHints: 0)
+    for _ in 0..<5 {
+        ceiling.record(clean, reviewBacklogGrowing: false)
+    }
+    check(ceiling.tier == .t3, "t3 has no ceiling above it: 5 clean rounds keep it at t3")
+}
+
+do {
+    // 15-round >=90%-clean backstop. Note on these exact thresholds: 5-of-7
+    // is ~71.4% while the backstop is 90% over >=15 rounds -- and it's
+    // provable (pigeonhole over two disjoint 7-round halves of a 14-round
+    // prefix) that ANY sequence reaching 90% clean over 15 rounds must also
+    // satisfy the 5-of-7 window rule at or before that same round, since
+    // >=90% clean over 15 rounds allows at most 1 non-clean round total, and
+    // a single non-clean round cannot appear in both disjoint halves. So
+    // this exercises the backstop's own numeric condition (>=15 rounds,
+    // >=90% clean truly holds) without claiming to isolate it from 5-of-7 --
+    // both are legitimately satisfied together, and either is a correct
+    // reason to promote.
+    var ladder = TierLadder(tier: .t1)
+    let clean = RoundReport(wrongAttempts: 0, timeoutHints: 0)
+    let mediocre = RoundReport(wrongAttempts: 2, timeoutHints: 1)
+    var reports = Array(repeating: clean, count: 14)
+    reports.insert(mediocre, at: 7) // exactly 1 non-clean round among 15 -> 14/15 ≈ 93.3% >= 90%
+    check(reports.count == 15, "backstop test setup sanity: 15 rounds total")
+    for r in reports {
+        ladder.record(r, reviewBacklogGrowing: false)
+    }
+    check(ladder.tier != .t1, "a 15-round run at >=90% clean promotes at least one tier past t1")
+}
+
+do {
+    // Below the backstop's ratio threshold, and never satisfying 5-of-7
+    // either (0% clean throughout) -- never promotes, even well past 15
+    // rounds at the same tier.
+    var ladder = TierLadder(tier: .t1)
+    let mediocre = RoundReport(wrongAttempts: 2, timeoutHints: 1)
+    for _ in 0..<20 {
+        ladder.record(mediocre, reviewBacklogGrowing: false)
+    }
+    check(ladder.tier == .t1, "20 rounds of all-mediocre (0% clean, never rough) never promotes via either rule")
+}
+
+do {
+    // Freeze: reviewBacklogGrowing blocks promotion even when 5-of-7 is met.
+    var ladder = TierLadder(tier: .t1)
+    let clean = RoundReport(wrongAttempts: 0, timeoutHints: 0)
+    for _ in 0..<5 {
+        ladder.record(clean, reviewBacklogGrowing: true)
+    }
+    check(ladder.tier == .t1, "5 clean rounds with reviewBacklogGrowing=true never promotes")
+    // Once the freeze lifts, the already-recorded clean history still counts.
+    ladder.record(clean, reviewBacklogGrowing: false)
+    check(ladder.tier == .t2, "freeze lifting on a later round promotes using the accumulated clean history")
+}
+
+do {
+    // Freeze does NOT block demotion.
+    var ladder = TierLadder(tier: .t2)
+    let rough = RoundReport(wrongAttempts: 4, timeoutHints: 0)
+    ladder.record(rough, reviewBacklogGrowing: true)
+    ladder.record(rough, reviewBacklogGrowing: true)
+    check(ladder.tier == .t1, "2 consecutive rough rounds demote even while reviewBacklogGrowing is true")
+}
+
+do {
+    // Counters reset at a new tier: after promoting, it takes a fresh 5-of-7
+    // (not carried-over clean count) to promote again.
+    var ladder = TierLadder(tier: .t1)
+    let clean = RoundReport(wrongAttempts: 0, timeoutHints: 0)
+    for _ in 0..<5 { ladder.record(clean, reviewBacklogGrowing: false) }
+    check(ladder.tier == .t2, "sanity: promoted to t2")
+    let rough = RoundReport(wrongAttempts: 4, timeoutHints: 0)
+    ladder.record(rough, reviewBacklogGrowing: false)
+    ladder.record(clean, reviewBacklogGrowing: false)
+    ladder.record(clean, reviewBacklogGrowing: false)
+    ladder.record(clean, reviewBacklogGrowing: false)
+    check(ladder.tier == .t2, "3 clean rounds right after a fresh promotion do not instantly re-promote (counters reset)")
+}
+
+do {
+    // Counters also reset after a demotion.
+    var ladder = TierLadder(tier: .t2)
+    let rough = RoundReport(wrongAttempts: 4, timeoutHints: 0)
+    ladder.record(rough, reviewBacklogGrowing: false)
+    ladder.record(rough, reviewBacklogGrowing: false)
+    check(ladder.tier == .t1, "sanity: demoted to t1")
+    // Immediately record 1 more rough round: should NOT demote further (t1 has no floor),
+    // and should not carry over any stale "consecutive rough" count into a phantom 3rd hit.
+    ladder.record(rough, reviewBacklogGrowing: false)
+    check(ladder.tier == .t1, "post-demotion rough streak is 1 fresh rough round, not a leftover 3rd -- still t1 (floor)")
+}
+
+do {
+    // Tier changes only happen via `record` (between rounds) -- constructing
+    // RoundReport values or simply reading `.tier` never mutates state.
+    let ladder = TierLadder(tier: .t2)
+    _ = RoundReport(wrongAttempts: 5, timeoutHints: 5)
+    _ = ladder.tier
+    _ = ladder.tier
+    check(ladder.tier == .t2, "tier is untouched by constructing reports or repeated reads (record() is the only mutator)")
+}
+
+do {
+    // Codable round-trip persists tier + in-progress counters faithfully.
+    var ladder = TierLadder(tier: .t2)
+    let clean = RoundReport(wrongAttempts: 0, timeoutHints: 0)
+    let mediocre = RoundReport(wrongAttempts: 2, timeoutHints: 1)
+    ladder.record(clean, reviewBacklogGrowing: false)
+    ladder.record(mediocre, reviewBacklogGrowing: false)
+    ladder.record(clean, reviewBacklogGrowing: false)
+
+    let data = try? JSONEncoder().encode(ladder)
+    check(data != nil, "TierLadder encodes to Data")
+    let decoded = try? JSONDecoder().decode(TierLadder.self, from: data ?? Data())
+    check(decoded != nil, "TierLadder decodes back from Data")
+    check(decoded == ladder, "decoded TierLadder equals the original (tier + counters round-trip)")
+
+    // And the decoded ladder continues the staircase exactly as if it had
+    // never been serialized (proves the private counters, not just `tier`,
+    // survived the round-trip).
+    if var restored = decoded {
+        restored.record(clean, reviewBacklogGrowing: false)
+        var control = ladder
+        control.record(clean, reviewBacklogGrowing: false)
+        check(restored == control, "restored ladder behaves identically to the un-serialized control after another round")
+    }
+}
+
+// =====================================================================
+// 13. GameWordPicker: weights, constraints, fallback, "introduce nothing"
+// =====================================================================
+do {
+    // Rich, evenly-stocked pool: 40 learning/developing, 40 fluent/mastered,
+    // 20 already-introduced-new, all short enough to pass any maxLength.
+    var pool: [WordSnapshot] = []
+    for i in 0..<20 { pool.append(WordSnapshot(id: "learn\(i)", state: .learning)) }
+    for i in 0..<20 { pool.append(WordSnapshot(id: "dev\(i)", state: .developing)) }
+    for i in 0..<20 { pool.append(WordSnapshot(id: "fluent\(i)", state: .fluent)) }
+    for i in 0..<20 { pool.append(WordSnapshot(id: "mastered\(i)", state: .mastered)) }
+    for i in 0..<20 {
+        var w = WordSnapshot(id: "new\(i)")
+        w.timesSeen = 1 // already introduced
+        pool.append(w)
+    }
+
+    var rng: RandomNumberGenerator = SeededRNG(seed: 11)
+    let picked = pickGameWords(pool: pool, count: 20, rng: &rng)
+    check(picked.count == 20, "picker returns exactly the requested count from a rich pool")
+    let learningDevCount = picked.filter { $0.id.hasPrefix("learn") || $0.id.hasPrefix("dev") }.count
+    let fluentMasteredCount = picked.filter { $0.id.hasPrefix("fluent") || $0.id.hasPrefix("mastered") }.count
+    let newCount = picked.filter { $0.id.hasPrefix("new") }.count
+    check(learningDevCount == 12, "60% of 20 -> 12 learning/developing words, got \(learningDevCount)")
+    check(fluentMasteredCount == 6, "30% of 20 -> 6 fluent/mastered words, got \(fluentMasteredCount)")
+    check(newCount == 2, "10% of 20 -> 2 already-introduced-new words, got \(newCount)")
+    check(Set(picked.map { $0.id }).count == picked.count, "no duplicate words in a picked round")
+}
+
+do {
+    // Games introduce nothing: a word with state .new and timesSeen == 0 is
+    // NEVER selected, even when it's the only thing padding out the pool.
+    var pool: [WordSnapshot] = []
+    for i in 0..<3 { pool.append(WordSnapshot(id: "learn\(i)", state: .learning)) }
+    for i in 0..<30 { pool.append(WordSnapshot(id: "untouched\(i)")) } // timesSeen == 0
+
+    var rng: RandomNumberGenerator = SeededRNG(seed: 22)
+    let picked = pickGameWords(pool: pool, count: 10, rng: &rng)
+    check(!picked.contains { $0.id.hasPrefix("untouched") }, "never-seen new words are never picked, no matter how much padding they provide")
+    check(picked.count == 3, "with only 3 truly-eligible words (padding excluded), picker returns just those 3")
+}
+
+do {
+    // maxLength constraint filters the eligible pool before weighting.
+    var pool: [WordSnapshot] = []
+    pool.append(WordSnapshot(id: "cat", state: .fluent))      // len 3
+    pool.append(WordSnapshot(id: "dog", state: .fluent))      // len 3
+    pool.append(WordSnapshot(id: "elephant", state: .fluent)) // len 8, too long
+    pool.append(WordSnapshot(id: "hippopotamus", state: .fluent)) // len 12, too long
+
+    var rng: RandomNumberGenerator = SeededRNG(seed: 33)
+    let picked = pickGameWords(pool: pool, count: 4,
+                                constraints: GameWordConstraints(maxLength: 4), rng: &rng)
+    check(picked.count == 2, "maxLength constraint excludes over-length words before selection")
+    check(picked.allSatisfy { $0.id.count <= 4 }, "every picked word respects maxLength")
+}
+
+do {
+    // Fill-from-familiar fallback: learning/developing bucket is short, so
+    // fluent/mastered (checked first) backfills the shortfall.
+    var pool: [WordSnapshot] = []
+    pool.append(WordSnapshot(id: "onelearn", state: .learning))
+    for i in 0..<20 { pool.append(WordSnapshot(id: "fluent\(i)", state: .fluent)) }
+
+    var rng: RandomNumberGenerator = SeededRNG(seed: 44)
+    let picked = pickGameWords(pool: pool, count: 10, rng: &rng)
+    check(picked.count == 10, "fallback still fills the full requested count")
+    check(picked.contains { $0.id == "onelearn" }, "the sole learning word is still included")
+    let fluentUsed = picked.filter { $0.id.hasPrefix("fluent") }.count
+    check(fluentUsed == 9, "fluent/mastered backfills the rest of the shortfall (9 of 10), got \(fluentUsed)")
+}
+
+do {
+    // Pool (after constraints) smaller than count: whole eligible pool returned.
+    let pool = (0..<4).map { WordSnapshot(id: "w\($0)", state: .fluent) }
+    var rng: RandomNumberGenerator = SeededRNG(seed: 55)
+    let picked = pickGameWords(pool: pool, count: 10, rng: &rng)
+    check(picked.count == 4, "eligible pool smaller than count returns the whole eligible pool")
+    check(Set(picked.map { $0.id }) == Set(pool.map { $0.id }), "whole pool contents preserved when short")
+}
+
+do {
+    // Same seed -> same picks (determinism for tests/replay).
+    var pool: [WordSnapshot] = []
+    for i in 0..<10 { pool.append(WordSnapshot(id: "learn\(i)", state: .learning)) }
+    for i in 0..<10 { pool.append(WordSnapshot(id: "fluent\(i)", state: .fluent)) }
+
+    var rngA: RandomNumberGenerator = SeededRNG(seed: 66)
+    let pickedA = pickGameWords(pool: pool, count: 8, rng: &rngA)
+    var rngB: RandomNumberGenerator = SeededRNG(seed: 66)
+    let pickedB = pickGameWords(pool: pool, count: 8, rng: &rngB)
+    check(pickedA.map { $0.id } == pickedB.map { $0.id }, "same seed produces identical picks")
+}
+
+// =====================================================================
+// 14. GameWordPicker: confusables (homophones + edit-distance neighbors)
+// =====================================================================
+do {
+    let homophoneGroups = [["to", "two", "too"], ["there", "their", "they're"]]
+    let pool = [WordSnapshot(id: "to"), WordSnapshot(id: "too"), WordSnapshot(id: "two")]
+    let result = confusables(for: "to", pool: pool, homophoneGroups: homophoneGroups)
+    check(Set(result) == Set(["too", "two"]), "confusables includes every OTHER homophone-group member, got \(result)")
+    check(!result.contains("to"), "confusables never includes the target word itself")
+}
+
+do {
+    // Edit-distance-<=2 same-length neighbors from the pool.
+    let pool = [WordSnapshot(id: "cat"), WordSnapshot(id: "bat"), WordSnapshot(id: "cap"),
+                WordSnapshot(id: "dog"), WordSnapshot(id: "elephant")]
+    let result = confusables(for: "cat", pool: pool, homophoneGroups: [])
+    check(result.contains("bat"), "1-edit same-length neighbor (cat/bat) included")
+    check(result.contains("cap"), "1-edit same-length neighbor (cat/cap) included")
+    check(!result.contains("dog"), "3-edit same-length word (cat/dog) excluded (distance > 2)")
+    check(!result.contains("elephant"), "different-length word never included regardless of distance")
+    check(!result.contains("cat"), "confusables never includes the target word itself (edit-distance path)")
+}
+
+do {
+    // Case-insensitivity and combined homophone + edit-distance results, de-duplicated.
+    let homophoneGroups = [["Be", "bee"]]
+    let pool = [WordSnapshot(id: "bee"), WordSnapshot(id: "see"), WordSnapshot(id: "bea")]
+    let result = confusables(for: "BE", pool: pool, homophoneGroups: homophoneGroups)
+    check(result.contains("bee"), "confusables matches case-insensitively against the target")
+    check(Set(result).count == result.count, "confusables never returns duplicates")
+}
+
+do {
+    check(levenshteinDistance("cat", "cat") == 0, "levenshteinDistance: identical strings -> 0")
+    check(levenshteinDistance("cat", "bat") == 1, "levenshteinDistance: 1 substitution -> 1")
+    check(levenshteinDistance("cat", "dog") == 3, "levenshteinDistance: fully different 3-letter words -> 3")
+    check(levenshteinDistance("", "cat") == 3, "levenshteinDistance: empty vs 3-letter word -> 3")
+}
+
+// =====================================================================
 // Final tally
 // =====================================================================
 print("----")

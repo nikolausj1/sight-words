@@ -18,6 +18,22 @@ enum PhraseClip {
     case wasThatIt
     case yourTurn
 
+    // GameKit phrases (Games Spec §4). Clips may not exist yet -- every
+    // case below has a `fallbackText`, so `speak(segments:)`'s all-clips-or-
+    // AVSpeech rule still degrades cleanly.
+    case findTheWords
+    case whichWord
+    case matchTheCards
+    case nowYouSayIt
+    case readIt
+    case sayThenBuild
+    case sayItToBankIt
+    case praise1
+    case praise2
+    case praise3
+    case praise4
+    case showMe
+
     var slug: String {
         switch self {
         case .correct: return "correct"
@@ -31,6 +47,18 @@ enum PhraseClip {
         case .readOutLoud: return "read-out-loud"
         case .wasThatIt: return "was-that-it"
         case .yourTurn: return "your-turn"
+        case .findTheWords: return "find-the-words"
+        case .whichWord: return "which-word"
+        case .matchTheCards: return "match-the-cards"
+        case .nowYouSayIt: return "now-you-say-it"
+        case .readIt: return "read-it"
+        case .sayThenBuild: return "say-then-build"
+        case .sayItToBankIt: return "say-it-to-bank-it"
+        case .praise1: return "praise-1"
+        case .praise2: return "praise-2"
+        case .praise3: return "praise-3"
+        case .praise4: return "praise-4"
+        case .showMe: return "show-me"
         }
     }
 
@@ -47,6 +75,18 @@ enum PhraseClip {
         case .readOutLoud: return "Read each word out loud!"
         case .wasThatIt: return "Was that it? Tap the green check — or try again!"
         case .yourTurn: return "Your turn!"
+        case .findTheWords: return "Find the words!"
+        case .whichWord: return "Which word did you hear?"
+        case .matchTheCards: return "Match the cards!"
+        case .nowYouSayIt: return "Now you say it!"
+        case .readIt: return "Read it!"
+        case .sayThenBuild: return "Say the word, then build it!"
+        case .sayItToBankIt: return "Say it to bank it!"
+        case .praise1: return "Amazing!"
+        case .praise2: return "You got it!"
+        case .praise3: return "Wow, great reading!"
+        case .praise4: return "That was awesome!"
+        case .showMe: return "Here it is!"
         }
     }
 }

@@ -16,6 +16,10 @@ enum Feedback {
         case almost
         case reteach
         case sessionComplete
+        /// GameKit's shared wrong-answer treatment (Games Spec §1): soft
+        /// "boing", no scolding. Plays `sfx_pop` when that clip exists;
+        /// silently no-ops (haptic still fires) until it's added.
+        case boing
     }
 
     static func fire(_ event: Event) {
@@ -31,6 +35,7 @@ enum Feedback {
         case .almost:         return "sfx_almost"
         case .reteach:        return "sfx_reteach"
         case .sessionComplete: return "sfx_complete"
+        case .boing:          return "sfx_pop"
         }
     }
 
@@ -71,6 +76,7 @@ enum Feedback {
         case .almost:          impact(.soft)
         case .reteach:         impact(.soft)
         case .sessionComplete: notify(.success)
+        case .boing:           impact(.soft)
         }
         #endif
     }

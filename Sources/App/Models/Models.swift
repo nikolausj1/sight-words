@@ -34,6 +34,23 @@ final class Profile {
     /// Dolch list IDs (+ "custom") active for this profile.
     var activeListIDs: [String] = []
 
+    /// Additive field (lightweight SwiftData migration): JSON-encoded
+    /// `[GameID.rawValue: TierLadder]` map, one staircase state per GameKit
+    /// game (Games Spec §2). Existing rows read `nil` (no game played yet);
+    /// `LearningService.gameTier(for:profile:)` treats that as a fresh
+    /// tier-1 ladder for every game. Never decode/encode this directly --
+    /// go through `GameSessionRecorder.swift`'s `LearningService` extension.
+    var gameTierData: Data?
+
+    /// Additive fields backing `reviewBacklogGrowing` (Games Spec §2: tier
+    /// promotion freezes while the review backlog is growing). A rolling
+    /// window of daily `needsReview` counts, oldest first, capped at 8
+    /// entries (today + 7 days back) so index 0 is always ~7 days old once
+    /// full; `needsReviewHistoryUpdatedAt` gates the append to once per
+    /// calendar day. See `GameSessionRecorder.swift`.
+    var needsReviewHistory: [Int] = []
+    var needsReviewHistoryUpdatedAt: Date?
+
     @Relationship(deleteRule: .cascade, inverse: \WordProgressRecord.profile)
     var wordProgress: [WordProgressRecord] = []
     @Relationship(deleteRule: .cascade, inverse: \PracticeSession.profile)
