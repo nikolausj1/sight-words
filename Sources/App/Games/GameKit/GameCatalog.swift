@@ -66,9 +66,9 @@ struct GameEntry: Identifiable {
 enum GameCatalog {
     static let games: [GameEntry] = [
         GameEntry(id: .wordHunt, title: "Word Hunt", symbolName: "magnifyingglass",
-                  destination: { AnyView(PlaceholderGameView(id: .wordHunt, title: "Word Hunt", symbolName: "magnifyingglass")) }),
+                  destination: { AnyView(WordHuntGameView()) }),
         GameEntry(id: .sayMatch, title: "Say & Match", symbolName: "ear",
-                  destination: { AnyView(PlaceholderGameView(id: .sayMatch, title: "Say & Match", symbolName: "ear")) }),
+                  destination: { AnyView(SayMatchGameView()) }),
         GameEntry(id: .memory, title: "Memory Match", symbolName: "rectangle.on.rectangle.angled",
                   destination: { AnyView(PlaceholderGameView(id: .memory, title: "Memory Match", symbolName: "rectangle.on.rectangle.angled")) }),
         GameEntry(id: .missingLetter, title: "Missing Letter", symbolName: "puzzlepiece",

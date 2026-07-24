@@ -52,13 +52,20 @@ private struct SuccessMomentModifier: ViewModifier {
         content
             .overlay {
                 if let w = word {
+                    // .id + .task(id:) give each word its own presentation
+                    // lifecycle: back-to-back successes (word set A -> B with
+                    // no nil in between) refire the entrance and speech, and
+                    // the previous word's dismiss timer is auto-cancelled --
+                    // a DispatchQueue timer here could either never schedule
+                    // for B or dismiss B early with A's stale timer.
                     SuccessMoment(word: w)
+                        .id(w)
                         .transition(.opacity)
-                        .onAppear {
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
-                                word = nil
-                                onSettled()
-                            }
+                        .task(id: w) {
+                            try? await Task.sleep(nanoseconds: 1_400_000_000)
+                            guard !Task.isCancelled else { return }
+                            word = nil
+                            onSettled()
                         }
                 }
             }

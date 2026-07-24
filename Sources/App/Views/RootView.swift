@@ -7,6 +7,24 @@ extension Notification.Name {
     static let startOverRequested = Notification.Name("startOverRequested")
 }
 
+/// Debug/screenshot stopgap (Games Spec §6): "-demoGame <id> [tier]" launches
+/// straight into that GameKit game's real root view, bypassing the Games
+/// shelf (WP-G8's home redesign, not wired yet). Generic across every
+/// `GameID` so each game worker's own overnight verification pass shares one
+/// launch-arg convention instead of five bespoke ones -- delete this (and its
+/// one `.fullScreenCover` in `RootView.body`) once WP-G8 lands real shelf
+/// navigation.
+private struct DemoGameLaunch: Identifiable {
+    let id: GameID
+
+    static func fromProcessArguments() -> DemoGameLaunch? {
+        let args = ProcessInfo.processInfo.arguments
+        guard let idx = args.firstIndex(of: "-demoGame"), idx + 1 < args.count,
+              let gameID = GameID(rawValue: args[idx + 1]) else { return nil }
+        return DemoGameLaunch(id: gameID)
+    }
+}
+
 /// The app root (§6.1/§6.2, ported from Math Tutor's RootView): ZStack of
 /// HomeView, an onboarding overlay while the active profile isn't onboarded,
 /// the onboarding-finale avatar flight, and a top-layer splash. No splash art
@@ -45,6 +63,9 @@ struct RootView: View {
     /// home in HomeView's profile chip (upper left).
     @State private var flightKey: String?
 
+    /// See `DemoGameLaunch` above.
+    @State private var demoGameLaunch = DemoGameLaunch.fromProcessArguments()
+
     var body: some View {
         ZStack {
             WarmBackdrop()
@@ -65,6 +86,9 @@ struct RootView: View {
             }
         }
         .animation(.easeOut(duration: 0.5), value: needsOnboarding)
+        .fullScreenCover(item: $demoGameLaunch) { launch in
+            GameCatalog.entry(for: launch.id).destination()
+        }
         .onAppear {
             guard showSplash else { return }
             scheduleSplashDismiss()
