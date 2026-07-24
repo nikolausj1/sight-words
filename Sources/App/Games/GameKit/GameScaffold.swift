@@ -33,94 +33,58 @@ struct GameInstruction: Equatable {
 
 // MARK: - InstructionSpeaker
 
-/// Fixed top-left darkPlate speaker button (Games Spec §1). Tap replays
-/// `instruction`; the icon pulses while `SpeechService` is audible. Polls
-/// `SpeechService.shared.isSpeakingAloud` on a light timer rather than
-/// requiring a `@Published` hook -- that property is already a plain
-/// (pollable) computed var, so no changes to `SpeechService` were needed.
+/// Fixed top-left `SpeakerButton` (Games Spec §1 / Design Direction §2). Tap
+/// replays `instruction`; the badge wobbles + sound-arc petals fan out while
+/// `SpeechService` is audible (`SpeakerButton` itself owns that polling).
+/// Thin wrapper kept as its own named type so every existing `GameScaffold`
+/// call site (and any future one) keeps using "the game's instruction
+/// speaker" as a concept, even though the visual is now the shared paper
+/// `SpeakerButton`.
 struct InstructionSpeaker: View {
     let instruction: GameInstruction
-    @State private var isSpeaking = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        Button {
-            SpeechService.shared.speak(segments: instruction.segments)
-        } label: {
-            Image(systemName: "speaker.wave.2.fill")
-                .font(.system(size: 20, weight: .bold))
-                .foregroundStyle(.white)
-                .frame(width: 52, height: 52)
-                .scaleEffect(isSpeaking && !reduceMotion ? 1.12 : 1.0)
-        }
-        .darkPlate(corner: 26)
-        .buttonStyle(PopButtonStyle())
-        .animation(.easeInOut(duration: 0.5).repeatForever(autoreverses: true), value: isSpeaking)
-        .accessibilityLabel("Replay instructions")
-        .onReceive(Timer.publish(every: 0.15, on: .main, in: .common).autoconnect()) { _ in
-            let speaking = SpeechService.shared.isSpeakingAloud
-            if speaking != isSpeaking { isSpeaking = speaking }
-        }
+        SpeakerButton(action: { SpeechService.shared.speak(segments: instruction.segments) },
+                      accessibilityLabel: "Replay instructions")
     }
 }
 
 // MARK: - HoldToExitButton
 
-/// Press-and-hold exit gate (Games Spec §1): ~0.6s hold with a radial fill
-/// indicator, top-right X. A quick tap does nothing -- the child (or a
-/// sibling) can't bail out of a round by accident.
+/// Press-and-hold exit gate (Games Spec §1 / Design Direction §2): the
+/// shared paper `CloseButton` -- ~0.6s hold "unrolling ring" fill, brief-tap
+/// teach wiggle. A quick tap alone still can't bail a child out of a round
+/// by accident. Thin wrapper (see `InstructionSpeaker`'s doc comment for why
+/// this stays a named type rather than every call site using `CloseButton`
+/// directly).
 struct HoldToExitButton: View {
     let onExit: () -> Void
-    @State private var progress: CGFloat = 0
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    private let holdDuration: TimeInterval = 0.6
 
     var body: some View {
-        ZStack {
-            Circle()
-                .stroke(Color.white.opacity(0.25), lineWidth: 4)
-            Circle()
-                .trim(from: 0, to: progress)
-                .stroke(Theme.Color.accent, style: StrokeStyle(lineWidth: 4, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-            Image(systemName: "xmark")
-                .font(.system(size: 18, weight: .bold))
-                .foregroundStyle(.white)
-        }
-        .frame(width: 52, height: 52)
-        .darkPlate(corner: 26)
-        .contentShape(Circle())
-        .onLongPressGesture(minimumDuration: holdDuration, maximumDistance: 60) {
-            progress = 0
-            onExit()
-        } onPressingChanged: { pressing in
-            if pressing {
-                withAnimation(reduceMotion ? nil : .linear(duration: holdDuration)) { progress = 1 }
-            } else {
-                withAnimation(Theme.Motion.quick) { progress = 0 }
-            }
-        }
-        .accessibilityLabel("Exit game")
-        .accessibilityHint("Press and hold to exit")
+        CloseButton(onClose: onExit)
     }
 }
 
 // MARK: - RoundProgressDots
 
-/// Round-progress indicator (Games Spec §1): one dot per round in the set,
-/// filled through the current round.
+/// Round-progress indicator (Games Spec §1): one small paper dot per round
+/// in the set, filled through the current round with the game's own accent
+/// family so the dots read as part of that game's paper palette rather than
+/// the old generic gold/ink pair.
 struct RoundProgressDots: View {
     /// 0-based index of the round currently in progress.
     let currentRound: Int
     let totalRounds: Int
+    var family: PaperTheme.Family = PaperTheme.cream
 
     var body: some View {
         HStack(spacing: 8) {
             ForEach(0..<max(totalRounds, 1), id: \.self) { i in
                 Circle()
-                    .fill(i <= currentRound ? Theme.Color.accent : Theme.Color.ink.opacity(0.15))
-                    .frame(width: 10, height: 10)
+                    .fill(i <= currentRound ? family.accent : Color.white.opacity(0.5))
+                    .overlay(Circle().strokeBorder(Color.white.opacity(0.7), lineWidth: 1))
+                    .frame(width: 12, height: 12)
+                    .shadow(color: .black.opacity(0.12), radius: 2, y: 1)
             }
         }
     }
@@ -150,48 +114,56 @@ extension EnvironmentValues {
 
 // MARK: - GameBoardCard
 
-/// The orange-bordered rounded white card every game's board sits on (Games
-/// Spec §1), over the warm backdrop.
+/// The board container every game's board sits on (Games Spec §1), now a
+/// `PaperWindow` in the game's own accent family (Design Direction §1/§3)
+/// instead of a flat white card -- kills the "floating white card on empty
+/// background" look everywhere a `GameScaffold` game is played.
 struct GameBoardCard<Content: View>: View {
+    var family: PaperTheme.Family = PaperTheme.cream
     @ViewBuilder let content: () -> Content
+
+    /// `PaperWindow`'s own fixed content inset (two 16pt ring insets plus its
+    /// extra 20pt content padding -- see `PaperWindow`'s `ringInset`).
+    /// Duplicated here as a named constant (rather than wrapping
+    /// `PaperWindow` opaquely with no visibility into its insets) so
+    /// `gameBoardAreaSize` keeps reporting the REAL interior size content
+    /// will get -- the same contract this environment key has always had.
+    private let contentInset: CGFloat = 16 * 2 + 20
 
     var body: some View {
         // `GeometryReader` here measures the slot the surrounding VStack
         // actually proposes to this card (now trustworthy -- see `backdrop`'s
         // doc comment on `GameScaffold` for the layout bug this used to
         // inherit), then hands `content()` the exact, bounded interior size
-        // (slot minus this card's own padding) via `gameBoardAreaSize` --
-        // an explicit numeric `.frame()`, same pattern as the backdrop fix,
-        // rather than a greedy `.frame(maxWidth: .infinity)` that a
+        // (slot minus `PaperWindow`'s own ring insets) via `gameBoardAreaSize`
+        // -- an explicit numeric `.frame()`, same pattern as the backdrop
+        // fix, rather than a greedy `.frame(maxWidth: .infinity)` that a
         // misbehaving descendant could still blow past.
         GeometryReader { geo in
             let interior = CGSize(
-                width: max(geo.size.width - Theme.Metric.pad * 2, 0),
-                height: max(geo.size.height - Theme.Metric.pad * 2, 0)
+                width: max(geo.size.width - contentInset * 2, 0),
+                height: max(geo.size.height - contentInset * 2, 0)
             )
-            content()
-                .environment(\.gameBoardAreaSize, interior)
-                .padding(Theme.Metric.pad)
-                .frame(width: geo.size.width, height: geo.size.height)
+            PaperWindow(family: family) {
+                content()
+                    .environment(\.gameBoardAreaSize, interior)
+            }
+            .frame(width: geo.size.width, height: geo.size.height)
         }
-        .background(Theme.Color.surface)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Metric.corner, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.Metric.corner, style: .continuous)
-                .strokeBorder(Theme.Color.accent, lineWidth: 3)
-        )
     }
 }
 
 // MARK: - GameScaffold
 
-/// Shared chrome for every GameKit game (Games Spec §1/§2): warm backdrop,
-/// top row (InstructionSpeaker + hold-to-exit), the board card slot, and
-/// round-progress dots. Speaks `instruction` once when the screen appears;
-/// callers update `instruction` (e.g. between rounds) to change what the
-/// speaker replays.
+/// Shared chrome for every GameKit game (Games Spec §1/§2, folded into the
+/// Design Direction paper system): full-bleed backdrop, top row
+/// (`InstructionSpeaker` + hold-to-exit `CloseButton`), the board window, and
+/// round-progress dots -- all tinted in `gameID`'s own accent family (§3).
+/// Speaks `instruction` once when the screen appears; callers update
+/// `instruction` (e.g. between rounds) to change what the speaker replays.
 struct GameScaffold<Board: View>: View {
     let instruction: GameInstruction
+    let gameID: GameID
     let currentRound: Int
     let totalRounds: Int
     let onExit: () -> Void
@@ -199,22 +171,47 @@ struct GameScaffold<Board: View>: View {
 
     @Environment(\.horizontalSizeClass) private var hSizeClass
     private var isCompact: Bool { hSizeClass == .compact }
+    private var family: PaperTheme.Family { PaperTheme.family(for: gameID) }
 
     var body: some View {
-        ZStack {
-            backdrop
-            VStack(spacing: Theme.Metric.gap) {
-                HStack {
-                    InstructionSpeaker(instruction: instruction)
-                    Spacer()
-                    HoldToExitButton(onExit: onExit)
+        // Outer `GeometryReader` gives the board window a real number to cap
+        // itself against (Design Direction §4: "PaperWindow fills ~80% of
+        // the safe area's smaller dimension... remaining margins show
+        // backdrop") -- capped via `maxWidth/maxHeight` rather than forced
+        // into a hard square, so a wide iPad-landscape board (Word Hunt's
+        // grid + side word-list) can still use whatever aspect ratio its own
+        // content needs, up to that cap, instead of being squeezed into a
+        // square it was never laid out for.
+        //
+        // iPad (regular width) only: on a compact iPhone the screen's own
+        // "minor dimension" IS its width, so 80% of it is already a small
+        // number -- capping BOTH width and height to that same small number
+        // starves vertically-stacked compact layouts (Word Hunt's grid-above-
+        // list column, Games Spec §3.1) of the height they need, clipping
+        // the word list against the window's own edge. iPhone screens are
+        // small enough already that the "margins show backdrop" goal isn't
+        // worth that regression -- the window can use the full available
+        // space there instead.
+        GeometryReader { screenGeo in
+            let minorSide = min(screenGeo.size.width, screenGeo.size.height) * 0.8
+            ZStack {
+                backdrop
+                VStack(spacing: Theme.Metric.gap) {
+                    HStack {
+                        InstructionSpeaker(instruction: instruction)
+                        Spacer()
+                        HoldToExitButton(onExit: onExit)
+                    }
+                    GameBoardCard(family: family, content: board)
+                        .frame(maxWidth: isCompact ? .infinity : minorSide,
+                               maxHeight: isCompact ? .infinity : minorSide)
+                    RoundProgressDots(currentRound: currentRound, totalRounds: totalRounds, family: family)
                 }
-                GameBoardCard(content: board)
-                RoundProgressDots(currentRound: currentRound, totalRounds: totalRounds)
+                .padding(isCompact ? Theme.Metric.gap : Theme.Metric.pad)
             }
-            .padding(isCompact ? Theme.Metric.gap : Theme.Metric.pad)
+            .frame(width: screenGeo.size.width, height: screenGeo.size.height)
         }
-        // Belt-and-suspenders: makes this ZStack always claim exactly the
+        // Belt-and-suspenders: makes this view always claim exactly the
         // space it's proposed (the full screen, for a `fullScreenCover`
         // root), rather than leaving its own resolved size to whatever the
         // largest child reports. Does not by itself fix the backdrop bug

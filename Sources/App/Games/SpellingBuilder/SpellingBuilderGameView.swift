@@ -46,6 +46,7 @@ struct SpellingBuilderGameContentView: View {
     var body: some View {
         GameScaffold(
             instruction: coordinator.currentInstruction,
+            gameID: .spellingBuilder,
             currentRound: coordinator.currentWordIndex,
             totalRounds: coordinator.totalRounds,
             onExit: { dismiss() }
@@ -54,7 +55,7 @@ struct SpellingBuilderGameContentView: View {
         }
         .overlay {
             if coordinator.showRoundCelebration {
-                RoundCelebration(onNext: { dismiss() })
+                RoundCelebration(gameID: .spellingBuilder, onNext: { dismiss() })
             }
         }
         .onDisappear { coordinator.tearDown() }

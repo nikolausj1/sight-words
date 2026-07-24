@@ -54,6 +54,7 @@ struct MissingLetterGameContentView: View {
             // screen, so this keeps that established mapping rather than
             // picking a different approximate fit.
             instruction: GameInstruction(.fillTheBlanks),
+            gameID: .missingLetter,
             currentRound: coordinator.currentRoundIndex,
             totalRounds: coordinator.totalRounds,
             onExit: { dismiss() }
@@ -62,7 +63,7 @@ struct MissingLetterGameContentView: View {
         }
         .overlay {
             if coordinator.showRoundCelebration {
-                RoundCelebration(onNext: { dismiss() })
+                RoundCelebration(gameID: .missingLetter, onNext: { dismiss() })
             }
         }
         .onDisappear { coordinator.tearDown() }

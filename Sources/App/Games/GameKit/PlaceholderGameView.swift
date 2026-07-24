@@ -29,6 +29,7 @@ struct PlaceholderGameView: View {
     var body: some View {
         GameScaffold(
             instruction: openingLine,
+            gameID: id,
             currentRound: 0,
             totalRounds: 1,
             onExit: { dismiss() }

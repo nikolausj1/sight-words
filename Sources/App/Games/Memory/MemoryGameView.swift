@@ -46,6 +46,7 @@ struct MemoryGameContentView: View {
     var body: some View {
         GameScaffold(
             instruction: GameInstruction(.matchTheCards),
+            gameID: .memory,
             currentRound: coordinator.currentRoundIndex,
             totalRounds: coordinator.totalRounds,
             onExit: { dismiss() }
@@ -59,7 +60,7 @@ struct MemoryGameContentView: View {
         }
         .overlay {
             if coordinator.showRoundCelebration {
-                RoundCelebration(onNext: { dismiss() })
+                RoundCelebration(gameID: .memory, onNext: { dismiss() })
             }
         }
         .onDisappear { coordinator.tearDown() }

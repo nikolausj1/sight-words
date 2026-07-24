@@ -121,7 +121,7 @@ struct MemoryCardView: View {
         // bare `shape.fill(...)` ZStack layer used to (a ZStack gives every
         // child its own full proposed size).
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .memoryTileChrome(fill: Theme.Color.surface, corner: Theme.Metric.cornerSmall)
+        .paperTileFace(fill: Theme.Color.surface, corner: Theme.Metric.cornerSmall)
     }
 
     private var starBadge: some View {
@@ -139,37 +139,5 @@ struct MemoryCardView: View {
         }
         .padding(6)
         .allowsHitTesting(false)
-    }
-}
-
-/// `GameTileStyle`'s exact visual recipe (rounded-14 card, glossy top
-/// highlight, soft shadow -- Games Spec §1's shared tile chrome), inlined
-/// here rather than shared from `GameKit` (frozen this pass): `faceUp`'s
-/// content isn't a `Button`, so `GameTileStyle` itself (a `ButtonStyle`)
-/// doesn't apply. `fileprivate` -- this is a local copy for this file only,
-/// not a new cross-game shared entry point.
-private extension View {
-    func memoryTileChrome(fill: Color, corner: CGFloat) -> some View {
-        modifier(MemoryTileChromeModifier(fill: fill, corner: corner))
-    }
-}
-
-private struct MemoryTileChromeModifier: ViewModifier {
-    let fill: Color
-    let corner: CGFloat
-
-    func body(content: Content) -> some View {
-        let shape = RoundedRectangle(cornerRadius: corner, style: .continuous)
-        return content
-            .background(
-                ZStack {
-                    shape.fill(fill)
-                    LinearGradient(colors: [.white.opacity(0.5), .white.opacity(0)],
-                                   startPoint: .top, endPoint: .center)
-                        .clipShape(shape)
-                    shape.strokeBorder(Color.black.opacity(0.08), lineWidth: 1)
-                }
-            )
-            .shadow(color: .black.opacity(0.16), radius: 6, y: 3)
     }
 }

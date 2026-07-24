@@ -49,6 +49,7 @@ struct WordHuntGameContentView: View {
     var body: some View {
         GameScaffold(
             instruction: GameInstruction(.findTheWords),
+            gameID: .wordHunt,
             currentRound: coordinator.currentRoundIndex,
             totalRounds: coordinator.totalRounds,
             onExit: { dismiss() }
@@ -59,7 +60,7 @@ struct WordHuntGameContentView: View {
         .overlay { WordHuntVoiceBeatOverlay(coordinator: coordinator) }
         .overlay {
             if coordinator.showRoundCelebration {
-                RoundCelebration(onNext: { dismiss() })
+                RoundCelebration(gameID: .wordHunt, onNext: { dismiss() })
             }
         }
         .onDisappear { coordinator.tearDown() }

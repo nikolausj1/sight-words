@@ -61,21 +61,19 @@ struct PracticeCardView: View {
             let yesButton = Button { coordinator.voiceCheckConfirmYes() } label: {
                 Image(systemName: "checkmark")
                     .font(.system(size: 32, weight: .bold))
-                    .frame(width: isCompact ? nil : 110, height: 72)
+                    .frame(width: isCompact ? nil : 110)
                     .frame(maxWidth: isCompact ? .infinity : nil)
             }
-            .buttonStyle(ChunkyKeyStyle(base: Theme.Color.correct,
-                                       deep: Theme.Color.correct.shaded(by: -0.35), corner: 16))
+            .buttonStyle(PaperKeyButton(fill: Theme.Color.correct, size: .primary, corner: 16))
             .accessibilityLabel("Yes, I said it right")
 
             let tryAgainButton = Button { coordinator.voiceCheckTryAgain() } label: {
                 Image(systemName: "arrow.circlepath")
                     .font(.system(size: 32, weight: .bold))
-                    .frame(width: isCompact ? nil : 110, height: 72)
+                    .frame(width: isCompact ? nil : 110)
                     .frame(maxWidth: isCompact ? .infinity : nil)
             }
-            .buttonStyle(ChunkyKeyStyle(base: Theme.Color.accent,
-                                       deep: Theme.Color.accent.shaded(by: -0.35), corner: 16))
+            .buttonStyle(PaperKeyButton(fill: Theme.Color.accent, size: .primary, corner: 16))
             .accessibilityLabel("Try again")
 
             if isCompact {
@@ -117,14 +115,7 @@ struct PracticeCardView: View {
 
     private var topBar: some View {
         HStack(spacing: Theme.Metric.gap) {
-            Button(action: onExit) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 40, height: 40)
-            }
-            .darkPlate(corner: 14)
-            .buttonStyle(PopButtonStyle())
+            CloseButton(onClose: onExit, diameter: isCompact ? 52 : 64)
 
             VStack(alignment: .leading, spacing: 6) {
                 Text("Word \(min(coordinator.completedCount + 1, max(coordinator.totalWords, 1))) of \(coordinator.totalWords)")
@@ -172,25 +163,12 @@ struct PracticeCardView: View {
     /// iPad: right-edge column overlaying the word.
     private var sideControls: some View {
         VStack(spacing: 12) {
-            Button { coordinator.replayWord() } label: {
-                Image(systemName: "speaker.wave.2.fill")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 52, height: 52)
-            }
-            .darkPlate(corner: 16)
-            .buttonStyle(PopButtonStyle())
-            .accessibilityLabel("Replay word")
+            SpeakerButton(action: { coordinator.replayWord() }, accessibilityLabel: "Replay word")
 
             if coordinator.currentSentence != nil {
-                Button { coordinator.toggleSentence() } label: {
-                    Image(systemName: "text.quote")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .frame(width: 52, height: 52)
+                PaperIconChip(systemImage: "text.quote", diameter: 64) {
+                    coordinator.toggleSentence()
                 }
-                .darkPlate(corner: 16)
-                .buttonStyle(PopButtonStyle())
                 .accessibilityLabel("In a sentence")
             }
         }
@@ -201,25 +179,12 @@ struct PracticeCardView: View {
     /// them off of in portrait).
     private var sideControlsRow: some View {
         HStack(spacing: 12) {
-            Button { coordinator.replayWord() } label: {
-                Image(systemName: "speaker.wave.2.fill")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 44, height: 44)
-            }
-            .darkPlate(corner: 14)
-            .buttonStyle(PopButtonStyle())
-            .accessibilityLabel("Replay word")
+            SpeakerButton(action: { coordinator.replayWord() }, diameter: 52, accessibilityLabel: "Replay word")
 
             if coordinator.currentSentence != nil {
-                Button { coordinator.toggleSentence() } label: {
-                    Image(systemName: "text.quote")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .frame(width: 44, height: 44)
+                PaperIconChip(systemImage: "text.quote", diameter: 52) {
+                    coordinator.toggleSentence()
                 }
-                .darkPlate(corner: 14)
-                .buttonStyle(PopButtonStyle())
                 .accessibilityLabel("In a sentence")
             }
         }
@@ -268,9 +233,8 @@ struct PracticeCardView: View {
                     Text("Show answer")
                         .font(Theme.Font.label(20))
                         .frame(maxWidth: .infinity)
-                        .frame(height: 110)
                 }
-                .buttonStyle(ChunkyKeyStyle(base: Theme.Color.primary, deep: Theme.Color.primary.shaded(by: -0.35)))
+                .buttonStyle(PaperKeyButton(fill: Theme.Color.primary, size: .hero))
                 .disabled(!coordinator.buttonsEnabled)
                 .opacity(showAnswerOpacity)
                 .scaleEffect(showAnswerScale)
@@ -314,7 +278,39 @@ struct PracticeCardView: View {
             .frame(maxWidth: .infinity)
             .frame(height: isCompact ? 84 : 110)
         }
-        .buttonStyle(ChunkyKeyStyle(base: base, deep: base.shaded(by: -0.35)))
+        .buttonStyle(PaperKeyButton(fill: base, size: .primary))
+    }
+}
+
+/// A small round paper icon chip (Design Direction §2/§5): the generic
+/// secondary-action paper badge used for controls that are neither the
+/// persistent `SpeakerButton` nor `CloseButton` (e.g. `PracticeCardView`'s
+/// "in a sentence" toggle) -- same paper badge language (flat fill, white
+/// inner ring, soft shadow, `PopButtonStyle` press) at the same 64pt+
+/// kid-scale floor, just without those two buttons' own special-case
+/// speaking/hold behavior.
+private struct PaperIconChip: View {
+    let systemImage: String
+    var diameter: CGFloat = 64
+    let action: () -> Void
+
+    private let tint = PaperTheme.sky.accent
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                Circle()
+                    .fill(LinearGradient(colors: [tint.shaded(by: 0.16), tint],
+                                         startPoint: .top, endPoint: .bottom))
+                    .overlay(Circle().strokeBorder(Color.white.opacity(0.85), lineWidth: 3))
+                    .shadow(color: .black.opacity(0.16), radius: 5, y: 3)
+                Image(systemName: systemImage)
+                    .font(.system(size: diameter * 0.32, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
+            .frame(width: diameter, height: diameter)
+        }
+        .buttonStyle(PopButtonStyle(scale: 0.94))
     }
 }
 

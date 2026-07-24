@@ -191,19 +191,19 @@ private struct SpellingBuilderSlotView: View {
     }
 }
 
-/// The shared tile chrome (`GameTileStyle`'s recipe, via
-/// `spellingBuilderTileChrome` -- see `SpellingBuilderTrayView.swift`),
-/// applied only while the word isn't fused yet -- once every slot locks the
-/// row itself fuses into one solid pill (`SpellingBuilderSlotsRow`'s own
-/// background) and each slot's individual chrome would just be extra visual
-/// noise under that shared pill.
+/// The shared tile chrome (`GameTileStyle`'s recipe, via the shared
+/// `paperTileFace()` modifier -- Design Direction §4's tile-chrome
+/// fold-in), applied only while the word isn't fused yet -- once every slot
+/// locks the row itself fuses into one solid pill (`SpellingBuilderSlotsRow`'s
+/// own background) and each slot's individual chrome would just be extra
+/// visual noise under that shared pill.
 private struct SlotChrome: ViewModifier {
     let isFused: Bool
     func body(content: Content) -> some View {
         if isFused {
             content
         } else {
-            content.spellingBuilderTileChrome(fill: Theme.Color.surface, size: nil)
+            content.paperTileFace(fill: Theme.Color.surface, size: nil)
         }
     }
 }

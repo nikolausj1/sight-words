@@ -42,10 +42,15 @@ struct GameConfettiBurst: View {
     /// jump mid-fall if a parent view causes an unrelated re-render.
     private let particles: [Particle]
 
-    init(particleCount: Int = 24) {
+    /// Palette to draw particle colors from -- defaults to the original
+    /// fixed primary/accent/correct set (`SuccessMoment`, `MemoryCardView`'s
+    /// match burst, and every other pre-existing call site keep that exact
+    /// look unchanged); `RoundCelebration` passes a palette biased to the
+    /// game's own accent family (Design Direction §3/§6) instead.
+    init(particleCount: Int = 24, colors: [Color]? = nil) {
         self.particleCount = particleCount
-        let colors = [Theme.Color.primary, Theme.Color.accent,
-                      Theme.Color.correct, Theme.Color.accent.shaded(by: 0.3)]
+        let colors = colors ?? [Theme.Color.primary, Theme.Color.accent,
+                                Theme.Color.correct, Theme.Color.accent.shaded(by: 0.3)]
         self.particles = (0..<particleCount).map { i in
             Particle(x: .random(in: 0.05...0.95),
                       startY: .random(in: -0.30 ... -0.05),

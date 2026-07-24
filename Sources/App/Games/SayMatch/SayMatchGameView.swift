@@ -40,13 +40,14 @@ private struct SayMatchContentView: View {
     var body: some View {
         ZStack {
             GameScaffold(instruction: model.currentInstruction,
+                        gameID: .sayMatch,
                         currentRound: model.roundIndex,
                         totalRounds: max(model.totalRounds, 1),
                         onExit: onExit) {
                 roundContent
             }
             if model.isComplete {
-                RoundCelebration(onNext: onExit)
+                RoundCelebration(gameID: .sayMatch, onNext: onExit)
                     .transition(.opacity)
                     .zIndex(10)
             }

@@ -33,15 +33,16 @@ struct SayMatchTile: View {
         Button(action: action) {
             Text(text)
                 .font(Theme.Font.display(32))
-                .foregroundStyle(Theme.Color.ink)
                 .minimumScaleFactor(0.5)
                 .lineLimit(1)
-                .padding(.horizontal, Theme.Metric.gap)
         }
-        // Tap-to-choose, not dragged -- `.pressDown` (Games Spec §1's shared
-        // tile chrome; see `GameTileStyle`'s doc comment on the two press
-        // feels).
-        .buttonStyle(GameTileStyle(fill: Theme.Color.surface, size: CGSize(width: 130, height: 96), press: .pressDown))
+        // Tap-to-choose tile, now a `PaperKeyButton` (Design Direction §4:
+        // "SayMatch tiles adopt PaperKeyButton primary") instead of
+        // `GameTileStyle` -- same tap-to-choose purpose `.pressDown` served,
+        // folded into the one paper button system every kid-facing tap
+        // target now shares.
+        .buttonStyle(PaperKeyButton(fill: PaperTheme.skyBlue.accent, size: .primary))
+        .frame(width: 130)
         .scaleEffect(isHighlighted && !reduceMotion ? 1.15 : 1.0)
         .opacity(isDrifted ? 0 : 1)
         .offset(x: isDrifted && !reduceMotion ? 260 : 0,
