@@ -31,6 +31,15 @@ struct SessionCompleteView: View {
                 .foregroundStyle(Theme.Color.ink)
                 .multilineTextAlignment(.center)
 
+            // Guided weave (Games Spec §2, WP-G8): a small celebratory line
+            // when the session actually included its embedded game round
+            // (never shown when it was silently skipped -- empty pool).
+            if coordinator.didPlayGuidedGameRound {
+                Label("+ a game round!", systemImage: "gamecontroller.fill")
+                    .font(Theme.Font.label(18))
+                    .foregroundStyle(Theme.Color.accent)
+            }
+
             if !coordinator.missedWords.isEmpty {
                 Text("We'll practice these again: \(coordinator.missedWords.joined(separator: ", "))")
                     .font(Theme.Font.body(18))

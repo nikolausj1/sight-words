@@ -58,6 +58,7 @@ struct DashboardView: View {
                     }
                 }
             }
+            gamesCard
         }
         .frame(maxWidth: .infinity)
         .popover(item: $selectedWord) { wp in
@@ -100,6 +101,44 @@ struct DashboardView: View {
                 VStack(spacing: 8) { ForEach(mastered) { wordRow($0) } }
             }
         }
+    }
+
+    /// Games Spec §5's parent dashboard "Games" card: per game, current tier
+    /// + rounds played at that tier (from the persisted `TierLadder` state —
+    /// see `LearningService.gameRoundsAtCurrentTier(for:profile:)`). Always
+    /// shown once a profile exists, independent of card-session progress.
+    @ViewBuilder
+    private var gamesCard: some View {
+        if let profile {
+            card("Games", tint: Theme.Color.primary) {
+                VStack(spacing: 8) {
+                    ForEach(GameCatalog.games) { entry in gameRow(entry, profile: profile) }
+                }
+            }
+        }
+    }
+
+    private func gameRow(_ entry: GameEntry, profile: Profile) -> some View {
+        let tier = service.gameTier(for: entry.id, profile: profile)
+        let rounds = service.gameRoundsAtCurrentTier(for: entry.id, profile: profile)
+        return HStack(spacing: 10) {
+            Image(systemName: entry.symbolName)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Theme.Color.primary)
+                .frame(width: 18)
+            Text(entry.title).font(Theme.Font.label(14)).foregroundStyle(Theme.Color.ink)
+                .lineLimit(1)
+            Spacer()
+            Text("Tier \(tier.rawValue)")
+                .font(Theme.Font.label(12)).foregroundStyle(.white)
+                .padding(.horizontal, 8).padding(.vertical, 3)
+                .background(Capsule().fill(Theme.Color.primary))
+            Text("\(rounds) round\(rounds == 1 ? "" : "s")")
+                .font(Theme.Font.label(12)).foregroundStyle(Theme.Color.inkSoft)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .background(Theme.Color.bg, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     @ViewBuilder

@@ -619,11 +619,45 @@ struct ParentAreaView: View {
                     Text("15").tag(15)
                 }
                 .pickerStyle(.segmented)
+                Divider().padding(.vertical, 2)
+                gamesTierLockSection(profile: a)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(Theme.Metric.pad).cardSurface()
         .tint(Theme.Color.primary)
+    }
+
+    /// Games Spec §5's Settings "Games" section: per-game tier lock
+    /// (Auto/1/2/3, persisted via `LearningService.setGameTierLock`). "Auto"
+    /// means the game's own `TierLadder` staircase decides; any other
+    /// selection pins that game to the chosen tier regardless of the
+    /// ladder's actual state (which keeps recording underneath either way).
+    private func gamesTierLockSection(profile: Profile) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Games").font(Theme.Font.label(14)).foregroundStyle(Theme.Color.ink)
+            ForEach(GameCatalog.games) { entry in
+                gameTierLockRow(entry, profile: profile)
+            }
+        }
+    }
+
+    private func gameTierLockRow(_ entry: GameEntry, profile: Profile) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(entry.title).font(Theme.Font.label(12)).foregroundStyle(Theme.Color.inkSoft)
+            Picker(entry.title, selection: Binding<Int>(
+                get: { service.gameTierLock(for: entry.id, profile: profile)?.rawValue ?? 0 },
+                set: { newValue in
+                    let tier = GameTier(rawValue: newValue)   // nil for 0 ("Auto")
+                    service.setGameTierLock(tier, for: entry.id, profile: profile)
+                })) {
+                Text("Auto").tag(0)
+                Text("1").tag(1)
+                Text("2").tag(2)
+                Text("3").tag(3)
+            }
+            .pickerStyle(.segmented)
+        }
     }
 
     /// The voice-check toggle's extended flow (§6.8): permission requested

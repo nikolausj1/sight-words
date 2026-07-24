@@ -9,11 +9,22 @@ struct HomeView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.horizontalSizeClass) private var hSizeClass
     @Query(sort: \Profile.createdAt) private var profiles: [Profile]
+    /// "Play!" (Games Spec §5): the guided session -- cards then one embedded
+    /// game round (`SessionKind.guided`).
+    @State private var showGuided = false
+    /// "Practice Together" (Games Spec §5): demoted to a smaller secondary
+    /// button, but otherwise unchanged parent-scored session.
     @State private var showSession = false
+    /// No home-screen button of its own anymore ("On My Own" folded into
+    /// "Play!") -- kept solely so the `-demoSolo`/`-mockVoiceCheck*` debug
+    /// hooks (still used by solo-mechanics screenshot runs) keep working.
     @State private var showSolo = false
     @State private var showTricky = false
     @State private var showKidProfile = false
     @State private var showParent = false
+    /// Games shelf (Games Spec §5): which of the 5 `GameCatalog` games is
+    /// currently pushed, if any.
+    @State private var selectedGameID: GameID?
 
     private var profile: Profile? { profiles.first(where: { $0.isActive }) ?? profiles.first }
     private var service: LearningService { LearningService(context: context) }
@@ -61,6 +72,11 @@ struct HomeView: View {
             }
         }
         .padding(Theme.Metric.pad)
+        .fullScreenCover(isPresented: $showGuided) {
+            if let profile {
+                SessionView(profile: profile, context: context, kind: .guided)
+            }
+        }
         .fullScreenCover(isPresented: $showSession) {
             if let profile {
                 SessionView(profile: profile, context: context)
@@ -75,6 +91,9 @@ struct HomeView: View {
             if let profile {
                 SessionView(profile: profile, context: context, kind: .tricky)
             }
+        }
+        .fullScreenCover(item: $selectedGameID) { gameID in
+            GameCatalog.entry(for: gameID).destination()
         }
         .fullScreenCover(isPresented: $showParent) {
             ParentAreaView()
@@ -92,15 +111,29 @@ struct HomeView: View {
 
     private func applyDemoArgsIfNeeded() {
         #if DEBUG
-        guard !showSession, !showSolo, !showTricky, !showKidProfile, !showParent else { return }
+        guard !showGuided, !showSession, !showSolo, !showTricky, !showKidProfile, !showParent,
+              selectedGameID == nil else { return }
         let args = ProcessInfo.processInfo.arguments
+        // Fixes a real collision: a game worker's own screenshot run passes
+        // BOTH `-demoGame <id> [tier]` (handled by `RootView`, launching that
+        // game's real root view directly) AND, when exercising a 🎤 step,
+        // one of the shared `-mockVoiceCheck*` mock-pipeline args (Games Spec
+        // §1/§6 — the SAME mock args solo card sessions use). Without this
+        // guard, HomeView would ALSO see the `-mockVoiceCheck*` arg and stand
+        // up a competing solo `SessionView` cover underneath `RootView`'s
+        // `-demoGame` cover. Those mock args only ever imply a solo session
+        // when no `-demoGame` launch is in play.
+        let hasDemoGame = args.contains("-demoGame")
         if args.contains("-demoPractice") || args.contains("-demoReteach")
             || args.contains("-demoComplete") || args.contains("-demoSentence") {
             showSession = true
-        } else if args.contains("-demoSolo") || args.contains("-demoSoloAnswer")
-            || args.contains("-mockVoiceCheck") || args.contains("-mockVoiceCheckConfirm")
-            || args.contains("-mockVoiceCheckConfirmRepeat") || args.contains("-mockVoiceCheckNudge")
-            || args.contains("-demoHoldMic") || args.contains("-demoHoldMicHeld") {
+        } else if args.contains("-demoGuided") {
+            showGuided = true
+        } else if !hasDemoGame
+            && (args.contains("-demoSolo") || args.contains("-demoSoloAnswer")
+                || args.contains("-mockVoiceCheck") || args.contains("-mockVoiceCheckConfirm")
+                || args.contains("-mockVoiceCheckConfirmRepeat") || args.contains("-mockVoiceCheckNudge")
+                || args.contains("-demoHoldMic") || args.contains("-demoHoldMicHeld")) {
             // The voice-check mock args (§6.8) imply a solo session — that's
             // the only mode the overlay can appear in. The hold-mic demo args
             // (§ mic-mode) do too.
@@ -189,98 +222,170 @@ struct HomeView: View {
         .buttonStyle(PopButtonStyle())
     }
 
-    /// Regular (iPad): the original centered row of three big square keys,
-    /// pixel-for-pixel unchanged. Compact (iPhone portrait): the same three
-    /// keys stacked full-width so nothing clips off the side edges (was the
-    /// baseline overflow bug — see `_review/phone-baseline.png`).
-    @ViewBuilder
+    /// Games Spec §5 home redesign: a big primary "Play!" key (the guided
+    /// session), the Games shelf below it, then "Practice Together" demoted
+    /// to a small secondary button. Regular (iPad): Play! centered, shelf a
+    /// horizontal scroll of 6 tiles. Compact (iPhone): Play! full-width,
+    /// shelf a 2-row grid.
     private var modeButtons: some View {
+        VStack(spacing: Theme.Metric.gap) {
+            playButton
+            gamesShelf
+            practiceSecondaryButton
+        }
+    }
+
+    private var playButton: some View {
+        Button {
+            Feedback.fire(.keyTap)
+            showGuided = true
+        } label: {
+            HStack(spacing: 14) {
+                Image(systemName: "play.fill")
+                    .font(.system(size: isCompact ? 28 : 40, weight: .bold))
+                Text("Play!")
+                    .font(Theme.Font.label(isCompact ? 24 : 30))
+            }
+            .frame(maxWidth: isCompact ? .infinity : nil)
+            .frame(width: isCompact ? nil : 320, height: isCompact ? 84 : 120)
+        }
+        .buttonStyle(ChunkyKeyStyle(base: hasActiveWords ? Theme.Color.primary : Theme.Color.gentle,
+                                    deep: (hasActiveWords ? Theme.Color.primary : Theme.Color.gentle).shaded(by: -0.35),
+                                    corner: Theme.Metric.corner))
+        .disabled(!hasActiveWords)
+        .opacity(hasActiveWords ? 1 : 0.6)
+    }
+
+    /// Games Spec §5: 5 `GameCatalog` games (their art icons via
+    /// `Art.exists("gameicon-<id>")`, falling back to SF symbols) plus Tricky
+    /// Words as a 6th tile with its existing behavior. Tier shown ONLY as
+    /// subtle 1-3 dots under each game tile (never on the Tricky tile, which
+    /// isn't a game and has no tier).
+    @ViewBuilder
+    private var gamesShelf: some View {
         if isCompact {
-            VStack(spacing: Theme.Metric.gap) {
-                compactModeButton(title: "Practice Together", systemImage: "person.2.fill",
-                                  base: Theme.Color.primary, enabled: hasActiveWords) {
-                    Feedback.fire(.keyTap)
-                    showSession = true
-                }
-                compactModeButton(title: "On My Own", systemImage: "person.fill",
-                                  base: Theme.Color.correct, enabled: hasActiveWords) {
-                    Feedback.fire(.keyTap)
-                    showSolo = true
-                }
-                compactModeButton(title: trickyEnabled ? "Tricky Words" : "No tricky words right now!",
-                                  systemImage: "star.fill",
-                                  base: Theme.Color.accent, enabled: trickyEnabled) {
-                    Feedback.fire(.keyTap)
-                    showTricky = true
-                }
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 12) {
+                ForEach(GameCatalog.games) { gameTile($0) }
+                trickyTile
             }
         } else {
-            HStack(spacing: Theme.Metric.gap * 1.5) {
-                modeButton(title: "Practice\nTogether", systemImage: "person.2.fill",
-                           base: Theme.Color.primary, enabled: hasActiveWords) {
-                    Feedback.fire(.keyTap)
-                    showSession = true
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 18) {
+                    ForEach(GameCatalog.games) { gameTile($0) }
+                    trickyTile
                 }
-                modeButton(title: "On My Own", systemImage: "person.fill",
-                           base: Theme.Color.correct, enabled: hasActiveWords) {
-                    Feedback.fire(.keyTap)
-                    showSolo = true
-                }
-                modeButton(title: trickyEnabled ? "Tricky\nWords" : "No tricky\nwords right now!",
-                           systemImage: "star.fill",
-                           base: Theme.Color.accent, enabled: trickyEnabled) {
-                    Feedback.fire(.keyTap)
-                    showTricky = true
-                }
+                .padding(.horizontal, 4)
+                .padding(.vertical, 2)
             }
+            .frame(maxWidth: 620)
         }
     }
 
-    private func modeButton(title: String, systemImage: String, base: Color, enabled: Bool,
-                            action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(spacing: 12) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 40, weight: .semibold))
-                Text(title)
-                    .font(Theme.Font.label(20))
+    private func gameTile(_ entry: GameEntry) -> some View {
+        Button {
+            Feedback.fire(.keyTap)
+            selectedGameID = entry.id
+        } label: {
+            VStack(spacing: 6) {
+                shelfIconPlate {
+                    if Art.exists(entry.artIconKey) {
+                        Image(entry.artIconKey)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: isCompact ? 46 : 56, height: isCompact ? 46 : 56)
+                    } else {
+                        Image(systemName: entry.symbolName)
+                            .font(.system(size: isCompact ? 26 : 32, weight: .semibold))
+                            .foregroundStyle(Theme.Color.primary)
+                    }
+                }
+                Text(entry.title)
+                    .font(Theme.Font.label(isCompact ? 12 : 13))
+                    .foregroundStyle(Theme.Color.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                tierDots(for: entry.id)
+            }
+            .frame(width: isCompact ? nil : 92)
+            .frame(maxWidth: isCompact ? .infinity : nil)
+        }
+        .buttonStyle(PopButtonStyle())
+    }
+
+    /// Tricky Words as the shelf's 6th tile (Games Spec §5) — identical
+    /// enable/disable rule and destination as the old standalone button.
+    private var trickyTile: some View {
+        Button {
+            Feedback.fire(.keyTap)
+            showTricky = true
+        } label: {
+            VStack(spacing: 6) {
+                shelfIconPlate {
+                    Image(systemName: "star.fill")
+                        .font(.system(size: isCompact ? 26 : 32, weight: .semibold))
+                        .foregroundStyle(trickyEnabled ? Theme.Color.accent : Theme.Color.gentle)
+                }
+                Text(trickyEnabled ? "Tricky Words" : "No tricky\nwords")
+                    .font(Theme.Font.label(isCompact ? 12 : 13))
+                    .foregroundStyle(Theme.Color.ink)
                     .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.8)
+                // Empty spacer keeps this tile's label baseline aligned with
+                // the game tiles' tier-dots row below their title.
+                Color.clear.frame(height: 5)
             }
-            .frame(width: 220, height: 180)
+            .frame(width: isCompact ? nil : 92)
+            .frame(maxWidth: isCompact ? .infinity : nil)
         }
-        .buttonStyle(ChunkyKeyStyle(base: enabled ? base : Theme.Color.gentle,
-                                    deep: (enabled ? base : Theme.Color.gentle).shaded(by: -0.35),
-                                    corner: Theme.Metric.corner))
-        .disabled(!enabled)
-        .opacity(enabled ? 1 : 0.6)
+        .buttonStyle(PopButtonStyle())
+        .disabled(!trickyEnabled)
+        .opacity(trickyEnabled ? 1 : 0.55)
     }
 
-    /// Phone portrait mode key: full-width row (icon left, label right) at a
-    /// fixed ~92pt height instead of the iPad's centered square key — same
-    /// colors/icon/ChunkyKeyStyle so it reads as the same button, just reflowed.
-    private func compactModeButton(title: String, systemImage: String, base: Color, enabled: Bool,
-                                   action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 16) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 32, weight: .semibold))
-                    .frame(width: 40)
-                Text(title)
-                    .font(Theme.Font.label(19))
-                    .multilineTextAlignment(.leading)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.85)
-                Spacer(minLength: 0)
+    private func shelfIconPlate<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        ZStack { content() }
+            .frame(width: isCompact ? 72 : 88, height: isCompact ? 72 : 88)
+            .background(Theme.Color.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(Theme.Color.ink.opacity(0.08), lineWidth: 1))
+    }
+
+    /// 1-3 subtle dots under a game tile showing `LearningService.gameTier`
+    /// (Games Spec §5: "tier shown ONLY as subtle dots").
+    private func tierDots(for id: GameID) -> some View {
+        let tier = profile.map { service.gameTier(for: id, profile: $0) } ?? .t1
+        return HStack(spacing: 3) {
+            ForEach(1...3, id: \.self) { i in
+                Circle()
+                    .fill(i <= tier.rawValue ? Theme.Color.primary.opacity(0.6) : Theme.Color.ink.opacity(0.12))
+                    .frame(width: 5, height: 5)
             }
-            .padding(.horizontal, 20)
-            .frame(maxWidth: .infinity)
-            .frame(height: 92)
         }
-        .buttonStyle(ChunkyKeyStyle(base: enabled ? base : Theme.Color.gentle,
-                                    deep: (enabled ? base : Theme.Color.gentle).shaded(by: -0.35),
-                                    corner: Theme.Metric.corner))
-        .disabled(!enabled)
-        .opacity(enabled ? 1 : 0.6)
+    }
+
+    /// "Practice Together" (Games Spec §5): parents still need it, so it
+    /// stays — just quieter, a small bordered button under the shelf instead
+    /// of a big primary key.
+    private var practiceSecondaryButton: some View {
+        Button {
+            Feedback.fire(.keyTap)
+            showSession = true
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "person.2.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                Text("Practice Together")
+                    .font(Theme.Font.label(14))
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+        }
+        .buttonStyle(.bordered)
+        .tint(Theme.Color.inkSoft)
+        .disabled(!hasActiveWords)
+        .opacity(hasActiveWords ? 1 : 0.5)
     }
 }
 

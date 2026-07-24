@@ -51,6 +51,18 @@ final class Profile {
     var needsReviewHistory: [Int] = []
     var needsReviewHistoryUpdatedAt: Date?
 
+    /// Additive field (lightweight SwiftData migration): JSON-encoded
+    /// `[GameID.rawValue: GameTier]` map of parent-set tier locks (Games Spec
+    /// §5's Settings "Games" section: Auto/1/2/3 per game). A game absent
+    /// from the map (or the whole field `nil`) reads as "Auto" -- the
+    /// ladder's own current tier is used unchanged. A present entry pins
+    /// `LearningService.gameTier(for:profile:)`'s return value to that fixed
+    /// tier regardless of ladder state; the ladder keeps recording rounds
+    /// underneath the whole time, so switching back to Auto resumes wherever
+    /// it actually is. Never decode/encode this directly -- go through
+    /// `GameSessionRecorder.swift`'s `LearningService` extension.
+    var gameTierLockData: Data?
+
     @Relationship(deleteRule: .cascade, inverse: \WordProgressRecord.profile)
     var wordProgress: [WordProgressRecord] = []
     @Relationship(deleteRule: .cascade, inverse: \PracticeSession.profile)

@@ -7,12 +7,20 @@ enum SessionKind: Equatable {
     case parentScored
     case solo
     case tricky
+    /// "Play!" (Games Spec §5/§2, WP-G8): the home screen's primary button.
+    /// Reuses solo's self-score/voice-check card mechanics (§ mic-mode) since
+    /// this is now the default unsupervised flow a child runs alone -- "On My
+    /// Own" no longer has its own home button, and this is where that
+    /// behavior lives on -- then weaves in one embedded game round before
+    /// SessionComplete. See `SessionPhase.gameRound`.
+    case guided
 
     var modeLabel: String {
         switch self {
         case .parentScored: return "parent"
         case .solo: return "solo"
         case .tricky: return "tricky"
+        case .guided: return "guided"
         }
     }
 }
@@ -54,6 +62,17 @@ enum SessionPhase {
     case card                     // a scoreable card is on screen
     case feedback(ScoreResult)    // brief post-score beat; buttons disabled
     case reteach(WordSnapshot)    // second-miss interstitial
+    /// Guided weave only (Games Spec §2, WP-G8): the cards portion just
+    /// finished and one game round is being hosted before `.complete`. The
+    /// view layer renders this as a nested `fullScreenCover(item:)` (mirrors
+    /// `RootView`'s `-demoGame` launch hook) so the pushed game's own
+    /// `@Environment(\.dismiss)` calls (round-celebration "Next", the hold-
+    /// to-exit gate) close just that cover -- never the guided session
+    /// itself -- and the cover's `onDismiss` calls
+    /// `SessionCoordinator.completeGuidedGameRound()` to advance to
+    /// `.complete`. See that method's doc comment for why this was chosen
+    /// over threading an explicit `onGuidedComplete` closure into every game.
+    case gameRound(GameID)
     case complete
 }
 
@@ -99,6 +118,11 @@ final class SessionCoordinator: ObservableObject {
     /// finger-down hold) — see `holdMicPressBegan`/`holdMicPressEnded`. Drives
     /// the button's "held" visual the same as an actual hold would.
     @Published private(set) var holdMicLatched: Bool = false
+    /// Guided weave only (Games Spec §2): true once the embedded game round
+    /// actually played (vs. being silently skipped -- see
+    /// `guidedGameRoundEligible`), so `SessionCompleteView` can add its small
+    /// "+ a game round!" line.
+    @Published private(set) var didPlayGuidedGameRound = false
 
     /// Fixed for the whole session — see `ControlStyle`.
     let controlStyle: ControlStyle
@@ -195,9 +219,10 @@ final class SessionCoordinator: ObservableObject {
         case .parentScored: self.controlStyle = .parentScored
         case .solo: self.controlStyle = .solo
         case .tricky: self.controlStyle = ControlStyle(rawValue: profile.lastUsedControlStyle) ?? .parentScored
+        case .guided: self.controlStyle = .solo
         }
 
-        if kind == .solo {
+        if kind == .solo || kind == .guided {
             #if DEBUG
             let args = ProcessInfo.processInfo.arguments
             if args.contains("-demoHoldMic") || args.contains("-demoHoldMicHeld") {
@@ -222,7 +247,12 @@ final class SessionCoordinator: ObservableObject {
         }
         let snapshots = service.pool(for: profile)
         let mode: SessionMode = (kind == .tricky) ? .tricky : .standard
-        let words = buildSession(pool: snapshots, size: max(1, profile.sessionSize),
+        // Guided (Games Spec §2): "~8 cards" -- profile.sessionSize capped at
+        // 8 so the cards portion leaves room for the embedded game round
+        // inside the spec's overall ~7-minute guided session.
+        let baseSize = max(1, profile.sessionSize)
+        let size = kind == .guided ? min(baseSize, 8) : baseSize
+        let words = buildSession(pool: snapshots, size: size,
                                  now: sessionDate, calendar: .current, mode: mode)
         queue = SessionQueue(words: words)
         totalWords = queue.totalWords
@@ -421,6 +451,66 @@ final class SessionCoordinator: ObservableObject {
                                                   notYet: notYetCount, durationSec: duration)
         service.sessionFinished(profile: profile, stats: stats, now: sessionDate)
         missedWords = missedSet.map { service.displayText(forID: $0) }.sorted()
+
+        // Guided weave (Games Spec §2): one game round before SessionComplete,
+        // unless the pool's too thin to build a round -- then this behaves
+        // exactly like a normal cards-only session end, silently. `finish()`
+        // returns early in that branch; `.complete` (and its
+        // `Feedback.fire(.sessionComplete)`) is deferred to
+        // `completeGuidedGameRound()` once the round actually finishes.
+        if kind == .guided, guidedGameRoundEligible {
+            phase = .gameRound(Self.guidedGameID(now: sessionDate))
+            return
+        }
+        Feedback.fire(.sessionComplete)
+        phase = .complete
+    }
+
+    // MARK: Guided game round (Games Spec §2, WP-G8)
+
+    /// "Empty-pool" edge case (Games Spec §2): a game round needs at least a
+    /// handful of pool words to build anything (`pickGameWords` itself
+    /// returns `[]` when nothing's eligible) -- below that, the round is
+    /// silently skipped and the session ends cards-only, exactly as today.
+    /// Voice being off does NOT gate this: every game stays fully playable
+    /// without voice per §1's shared conventions (any 🎤 step just skips),
+    /// so there's no reason to withhold the round itself from the much more
+    /// common voice-off profile -- see this file's PR notes for that judgment
+    /// call.
+    private var guidedGameRoundEligible: Bool {
+        service.pool(for: profile).count >= 3
+    }
+
+    /// Which of the 5 GameKit games gets today's guided round (Games Spec
+    /// §2: "game rotates by day"). Rotates over `GameCatalog.games` in its
+    /// fixed registration order (Tricky Words is a shelf tile, not a game,
+    /// and is never part of this rotation).
+    private static func guidedGameID(now: Date, calendar: Calendar = .current) -> GameID {
+        let games = GameCatalog.games
+        let weekday = calendar.component(.weekday, from: now)   // 1...7
+        return games[(weekday - 1) % games.count].id
+    }
+
+    /// Called by the view layer's nested game `fullScreenCover`'s
+    /// `onDismiss` once the embedded round's own chrome (round celebration's
+    /// "Next", or the hold-to-exit gate) closes that cover. This -- rather
+    /// than threading an explicit `onGuidedComplete: () -> Void` closure into
+    /// every `GameEntry.destination()` -- is the "least invasive mechanism"
+    /// chosen for the guided handoff: it needs zero changes to any game
+    /// folder (WordHunt/SayMatch/Memory/MissingLetter, all frozen this pass)
+    /// because every one of those screens already calls
+    /// `@Environment(\.dismiss)` on its own natural "round over" beat; a
+    /// cover's `isPresented` binding flipping false from an inner `dismiss()`
+    /// call is standard SwiftUI behavior, so intercepting it here is enough.
+    /// A `guidedWords`/word-scoping parameter was considered too (see spec),
+    /// but every existing game coordinator already builds its own pool
+    /// straight from `LearningService.pool(for:)` internally (frozen), so
+    /// there's no seam to feed an explicit word list through without editing
+    /// those files -- `GameWordPicker`'s own learning/developing-weighted
+    /// pick already leans toward the words the cards portion just touched.
+    func completeGuidedGameRound() {
+        guard case .gameRound = phase else { return }
+        didPlayGuidedGameRound = true
         Feedback.fire(.sessionComplete)
         phase = .complete
     }
@@ -432,7 +522,7 @@ final class SessionCoordinator: ObservableObject {
     /// DEBUG mock's force-enable so screenshot runs don't need a real profile
     /// edit first.
     private var voiceCheckEligible: Bool {
-        guard kind == .solo else { return false }
+        guard kind == .solo || kind == .guided else { return false }
         #if DEBUG
         if VoiceCheckService.isMockActive { return voiceCheck.isAvailable() }
         #endif
@@ -839,7 +929,20 @@ final class SessionCoordinator: ObservableObject {
         case .complete:
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
                 guard let self, case .card = self.phase else { return }
-                self.score(.gotIt)
+                // Solo-style controls (plain `.solo`, and guided reusing the
+                // same mechanics, § mic-mode/WP-G8) require `revealAnswer()`
+                // before `score()` will do anything -- `score()` silently
+                // no-ops otherwise (see its own guard). Parent-scored is
+                // unaffected: it never gates on `revealed`.
+                if self.controlStyle == .solo, !self.revealed {
+                    self.revealAnswer()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                        guard let self, case .card = self.phase else { return }
+                        self.score(.gotIt)
+                    }
+                } else {
+                    self.score(.gotIt)
+                }
             }
         }
     }

@@ -15,6 +15,13 @@ enum GameID: String, Codable, CaseIterable {
     case spellingBuilder
 }
 
+/// Lets `GameID?` drive `fullScreenCover(item:)` directly (Games Spec §5's
+/// Games shelf, and the guided weave's `.gameRound` phase, WP-G8) without a
+/// wrapper struct — mirrors how `GameEntry` is already `Identifiable`.
+extension GameID: Identifiable {
+    var id: GameID { self }
+}
+
 // MARK: - GameEntry
 
 /// One Games-shelf tile: identity, display copy, icon, and the screen it
@@ -74,7 +81,7 @@ enum GameCatalog {
         GameEntry(id: .missingLetter, title: "Missing Letter", symbolName: "puzzlepiece",
                   destination: { AnyView(MissingLetterGameView()) }),
         GameEntry(id: .spellingBuilder, title: "Spelling Builder", symbolName: "cube",
-                  destination: { AnyView(PlaceholderGameView(id: .spellingBuilder, title: "Spelling Builder", symbolName: "cube")) }),
+                  destination: { AnyView(SpellingBuilderGameView()) }),
     ]
 
     static func entry(for id: GameID) -> GameEntry {

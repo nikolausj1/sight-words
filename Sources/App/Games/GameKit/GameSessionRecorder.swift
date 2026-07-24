@@ -40,9 +40,66 @@ extension LearningService {
 
     /// Current tier for one game (Games Spec §2's per-game staircase). A
     /// game never played yet reads as a fresh tier-1 ladder -- nothing is
-    /// persisted until its first round is recorded.
+    /// persisted until its first round is recorded. A parent-set lock
+    /// (Games Spec §5's Settings "Games" section) overrides the ladder's own
+    /// tier entirely when present -- see `gameTierLock(for:profile:)`.
     func gameTier(for id: GameID, profile: Profile) -> GameTier {
-        gameTierLadders(for: profile)[id.rawValue]?.tier ?? .t1
+        if let lock = gameTierLock(for: id, profile: profile) { return lock }
+        return gameTierLadders(for: profile)[id.rawValue]?.tier ?? .t1
+    }
+
+    // MARK: Per-game tier lock (Games Spec §5, WP-G8)
+
+    /// The parent-set lock for one game, or `nil` for "Auto" (follow the
+    /// ladder). Read by `gameTier(for:profile:)` above; games themselves
+    /// never need to know whether a tier came from a lock or the ladder.
+    func gameTierLock(for id: GameID, profile: Profile) -> GameTier? {
+        gameTierLocks(for: profile)[id.rawValue]
+    }
+
+    /// Sets (or, with `nil`, clears back to "Auto") the parent-set tier lock
+    /// for one game. The underlying `TierLadder` is untouched either way --
+    /// it keeps recording rounds and staircasing on its own regardless of
+    /// whether a lock is currently overriding what `gameTier` reports.
+    func setGameTierLock(_ tier: GameTier?, for id: GameID, profile: Profile) {
+        var locks = gameTierLocks(for: profile)
+        locks[id.rawValue] = tier
+        saveGameTierLocks(locks, to: profile)
+        try? context.save()
+    }
+
+    private func gameTierLocks(for profile: Profile) -> [String: GameTier] {
+        guard let data = profile.gameTierLockData,
+              let map = try? JSONDecoder().decode([String: GameTier].self, from: data)
+        else { return [:] }
+        return map
+    }
+
+    private func saveGameTierLocks(_ map: [String: GameTier], to profile: Profile) {
+        profile.gameTierLockData = try? JSONEncoder().encode(map)
+    }
+
+    /// Rounds played at a game's CURRENT tier (Games Spec §5's parent
+    /// dashboard "Games" card: "current tier + rounds played"). `TierLadder`
+    /// resets this count to 0 whenever a promotion/demotion fires (Games
+    /// Spec §2), so it reads as "rounds since the last tier change," not a
+    /// lifetime total -- which is the number that actually means something
+    /// next to "current tier."
+    ///
+    /// `TierLadder.roundsAtTier` itself is `private` -- Engine files are
+    /// frozen this pass -- but `TierLadder`'s `Codable` conformance has no
+    /// custom `CodingKeys`, so Swift's auto-synthesis still encodes every
+    /// stored property (private ones included) into the same JSON blob
+    /// `gameTierLadders(for:)` decodes above. This decodes that identical
+    /// `Profile.gameTierData` payload a second time into a tiny parallel
+    /// shape exposing just the one field the dashboard needs, rather than
+    /// adding a public accessor to the frozen Engine type.
+    func gameRoundsAtCurrentTier(for id: GameID, profile: Profile) -> Int {
+        struct LadderRoundsProbe: Decodable { let roundsAtTier: Int }
+        guard let data = profile.gameTierData,
+              let map = try? JSONDecoder().decode([String: LadderRoundsProbe].self, from: data)
+        else { return 0 }
+        return map[id.rawValue]?.roundsAtTier ?? 0
     }
 
     /// Records one just-finished round (Games Spec §2: "tier changes only
