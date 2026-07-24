@@ -33,6 +33,7 @@ enum PhraseClip {
     case praise3
     case praise4
     case showMe
+    case fillTheBlanks
 
     var slug: String {
         switch self {
@@ -59,6 +60,7 @@ enum PhraseClip {
         case .praise3: return "praise-3"
         case .praise4: return "praise-4"
         case .showMe: return "show-me"
+        case .fillTheBlanks: return "fill-the-blanks"
         }
     }
 
@@ -87,6 +89,7 @@ enum PhraseClip {
         case .praise3: return "Wow, great reading!"
         case .praise4: return "That was awesome!"
         case .showMe: return "Here it is!"
+        case .fillTheBlanks: return "Fill in the missing letters!"
         }
     }
 }

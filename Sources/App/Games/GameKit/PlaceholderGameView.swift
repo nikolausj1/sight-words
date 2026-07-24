@@ -21,7 +21,7 @@ struct PlaceholderGameView: View {
         case .wordHunt:        return GameInstruction(.findTheWords)
         case .sayMatch:        return GameInstruction(.whichWord)
         case .memory:          return GameInstruction(.matchTheCards)
-        case .missingLetter:   return GameInstruction(.giveItATry)
+        case .missingLetter:   return GameInstruction(.fillTheBlanks)
         case .spellingBuilder: return GameInstruction(.sayThenBuild)
         }
     }

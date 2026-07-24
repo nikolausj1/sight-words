@@ -70,9 +70,9 @@ enum GameCatalog {
         GameEntry(id: .sayMatch, title: "Say & Match", symbolName: "ear",
                   destination: { AnyView(SayMatchGameView()) }),
         GameEntry(id: .memory, title: "Memory Match", symbolName: "rectangle.on.rectangle.angled",
-                  destination: { AnyView(PlaceholderGameView(id: .memory, title: "Memory Match", symbolName: "rectangle.on.rectangle.angled")) }),
+                  destination: { AnyView(MemoryGameView()) }),
         GameEntry(id: .missingLetter, title: "Missing Letter", symbolName: "puzzlepiece",
-                  destination: { AnyView(PlaceholderGameView(id: .missingLetter, title: "Missing Letter", symbolName: "puzzlepiece")) }),
+                  destination: { AnyView(MissingLetterGameView()) }),
         GameEntry(id: .spellingBuilder, title: "Spelling Builder", symbolName: "cube",
                   destination: { AnyView(PlaceholderGameView(id: .spellingBuilder, title: "Spelling Builder", symbolName: "cube")) }),
     ]
